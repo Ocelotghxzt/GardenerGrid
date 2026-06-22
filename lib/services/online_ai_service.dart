@@ -10,8 +10,6 @@ class OnlineAiService {
   static const _keyApiKey = 'ai_api_key';
   static const _keyEndpoint = 'ai_endpoint';
 	static const _defaultEndpoint = 'https://api.duckduckgo.com/';
-	static const _ollamaEndpoint = 'http://127.0.0.1:11434/api/generate';
-	static const _ollamaModel = 'llama3.2:3b-instruct-q4_K_M';
 
   // ── Configuration ─────────────────────────────────────────────────────────
   Future<String?> getApiKey() async {
@@ -102,68 +100,7 @@ Guidelines:
 	  }
 	}
 
-	final ollama = await _chatWithOllama(
-	  history: history,
-	  userMessage: userMessage,
-	  soilContext: soilContext,
-	);
-	if (ollama != null && ollama.trim().isNotEmpty) {
-	  return '## Online AI (Local LLM)\n$ollama';
-	}
-
 	return _chatWithFreeSources(userMessage, soilContext: soilContext);
-  }
-
-  Future<String?> _chatWithOllama({
-	required List<Map<String, String>> history,
-	required String userMessage,
-	SoilSample? soilContext,
-  }) async {
-	try {
-	  final recent = history
-		  .where((m) => (m['role'] == 'user' || m['role'] == 'assistant'))
-		  .toList();
-	  final lastTurns = recent.length > 8 ? recent.sublist(recent.length - 8) : recent;
-
-	  final contextLines = StringBuffer();
-	  for (final m in lastTurns) {
-		contextLines.writeln('${m['role']}: ${m['content']}');
-	  }
-
-	  final prompt = '''${_systemPrompt(soilContext: soilContext)}
-
-Conversation history:
-${contextLines.toString()}
-
-User request:
-$userMessage
-
-Respond with practical, direct steps and avoid generic filler.''';
-
-	  final response = await http
-		  .post(
-			Uri.parse(_ollamaEndpoint),
-			headers: {'Content-Type': 'application/json'},
-			body: jsonEncode({
-			  'model': _ollamaModel,
-			  'prompt': prompt,
-			  'stream': false,
-			  'options': {
-				'temperature': 0.4,
-				'top_p': 0.9,
-			  }
-			}),
-		  )
-		  .timeout(const Duration(seconds: 18));
-
-	  if (response.statusCode != 200) return null;
-	  final data = jsonDecode(response.body) as Map<String, dynamic>;
-	  final text = (data['response'] ?? '').toString().trim();
-	  if (text.isEmpty) return null;
-	  return text;
-	} catch (_) {
-	  return null;
-	}
   }
 
   Future<String?> _chatWithCustomEndpoint({

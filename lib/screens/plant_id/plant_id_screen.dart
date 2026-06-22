@@ -223,7 +223,7 @@ class _PlantIdScreenState extends State<PlantIdScreen> {
                 const SizedBox(height: 12),
                 const Text('Plant type:', style: TextStyle(fontWeight: FontWeight.w600)),
                 DropdownButtonFormField<PlantHabit>(
-                  value: _habit,
+                  initialValue: _habit,
                   decoration: const InputDecoration(hintText: 'Select plant type'),
                   items: const [
                     DropdownMenuItem(value: PlantHabit.herb, child: Text('Herb/Flower')),
@@ -238,7 +238,7 @@ class _PlantIdScreenState extends State<PlantIdScreen> {
                 const SizedBox(height: 12),
                 const Text('Where was it found?', style: TextStyle(fontWeight: FontWeight.w600)),
                 DropdownButtonFormField<HabitatType>(
-                  value: _habitat,
+                  initialValue: _habitat,
                   decoration: const InputDecoration(hintText: 'Select habitat'),
                   items: const [
                     DropdownMenuItem(value: HabitatType.garden, child: Text('Garden/Farm')),
@@ -253,7 +253,7 @@ class _PlantIdScreenState extends State<PlantIdScreen> {
                 const SizedBox(height: 12),
                 const Text('Flower color:', style: TextStyle(fontWeight: FontWeight.w600)),
                 DropdownButtonFormField<FlowerColor>(
-                  value: _flowerColor,
+                  initialValue: _flowerColor,
                   decoration: const InputDecoration(hintText: 'Select color'),
                   items: const [
                     DropdownMenuItem(value: FlowerColor.white, child: Text('White')),

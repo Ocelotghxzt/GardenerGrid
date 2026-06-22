@@ -157,7 +157,7 @@ class _MeshMarketplaceScreenState extends State<MeshMarketplaceScreen> {
 					),
 					const SizedBox(height: 12),
 					DropdownButtonFormField<ListingCategory>(
-					  value: category,
+					  initialValue: category,
 					  items: ListingCategory.values
 						  .map(
 							(value) => DropdownMenuItem(

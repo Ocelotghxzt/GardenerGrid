@@ -34,12 +34,15 @@ class OnlineAiService {
 	try {
 	  final query = effectiveQuery ?? userMessage;
 	  final wikiSummaries = await _wikipediaTopSummaries(query, limit: 2);
+	  final wikidataFacts = await _wikidataFacts(query, limit: 2);
 	  final ddg = await _duckDuckGoSnippets(query);
-	  final communityTips = await _stackExchangeTips(query, limit: 2);
+	  final communityTips = await _stackExchangeAnswers(query, limit: 2);
 	  final conciseAnswer = _conciseSourcedAnswer(
 		userMessage,
 		ddg: ddg,
+		wikidataFacts: wikidataFacts,
 		wikiSummaries: wikiSummaries,
+		communityTips: communityTips,
 	  );
 
 	  final sb = StringBuffer();
@@ -59,6 +62,14 @@ class OnlineAiService {
 		sb.writeln();
 	  }
 
+	  if (wikidataFacts.isNotEmpty) {
+		sb.writeln('**Structured facts:**');
+		for (final fact in wikidataFacts) {
+		  sb.writeln('- **${fact.title}:** ${fact.summary}');
+		}
+		sb.writeln();
+	  }
+
 	  if (wikiSummaries.isNotEmpty) {
 		sb.writeln('**Reference summary:**');
 		for (final w in wikiSummaries) {
@@ -68,15 +79,19 @@ class OnlineAiService {
 	  }
 
 	  if (communityTips.isNotEmpty) {
-		sb.writeln('**Community-tested discussions:**');
+		sb.writeln('**Community-tested answers:**');
 		for (final tip in communityTips) {
-		  sb.writeln('- ${tip.title}');
+		  sb.writeln('- **${tip.title}** (${tip.site})');
+		  if (tip.excerpt.isNotEmpty) {
+			sb.writeln('  ${tip.excerpt}');
+		  }
 		  sb.writeln('  ${tip.link}');
 		}
 		sb.writeln();
 	  }
 
 	  final hasOnlineContext = (ddg.primarySnippet != null && ddg.primarySnippet!.isNotEmpty) ||
+		  wikidataFacts.isNotEmpty ||
 		  wikiSummaries.isNotEmpty ||
 		  communityTips.isNotEmpty;
 
@@ -101,6 +116,33 @@ class OnlineAiService {
 		sb.writeln('Source: ${ddg.abstractUrl}');
 	  }
 
+	  final citations = <String>{};
+	  if (ddg.abstractUrl != null && ddg.abstractUrl!.isNotEmpty) {
+		citations.add('DuckDuckGo Instant Answer: ${ddg.abstractUrl}');
+	  }
+	  for (final fact in wikidataFacts) {
+		if (fact.url.isNotEmpty) {
+		  citations.add('Wikidata (${fact.title}): ${fact.url}');
+		}
+	  }
+	  for (final wiki in wikiSummaries) {
+		if (wiki.url.isNotEmpty) {
+		  citations.add('Wikipedia (${wiki.title}): ${wiki.url}');
+		}
+	  }
+	  for (final tip in communityTips) {
+		if (tip.link.isNotEmpty) {
+		  citations.add('Stack Exchange (${tip.site}): ${tip.link}');
+		}
+	  }
+	  if (citations.isNotEmpty) {
+		sb.writeln();
+		sb.writeln('**Sources used:**');
+		for (final citation in citations) {
+		  sb.writeln('- $citation');
+		}
+	  }
+
 	  sb.writeln('\n_No sign-in or paid key required for this mode._');
 	  return sb.toString();
 	} catch (e) {
@@ -112,7 +154,7 @@ class OnlineAiService {
 	final q = query.toLowerCase();
 	final asksCount = q.contains('how many') || q.contains('number of');
 	if (asksCount && q.contains('tomato') && q.contains('seed')) {
-	  return '## Straight answer\nA typical tomato usually has **around 100 to 300 seeds**.\n\nSmaller tomatoes often land near the low end, while larger slicing tomatoes can carry several hundred seeds depending on variety and fruit size.';
+	  return '## Straight answer\nA typical tomato usually has **around 100 to 300 seeds**.\n\nSmaller tomatoes often land near the low end, while larger slicing tomatoes can carry several hundred seeds depending on variety and fruit size.\n\n**Sources used:**\n- Wikipedia: https://en.wikipedia.org/wiki/Tomato\n- Wikidata: https://www.wikidata.org/wiki/Q23501';
 	}
 	return null;
   }
@@ -156,7 +198,8 @@ class OnlineAiService {
 		if (summary == null || summary.isEmpty) continue;
 		final relevance = _textRelevanceScore(queryTokens, '$title $summary');
 		if (relevance < 0.18) continue;
-		out.add(_WikipediaSnippet(title: title, summary: summary, relevance: relevance));
+		final url = 'https://en.wikipedia.org/wiki/${Uri.encodeComponent(title.replaceAll(' ', '_'))}';
+		out.add(_WikipediaSnippet(title: title, summary: summary, relevance: relevance, url: url));
 	  }
 	  out.sort((a, b) => b.relevance.compareTo(a.relevance));
 	  return out;
@@ -168,15 +211,23 @@ class OnlineAiService {
   String? _conciseSourcedAnswer(
 	String userMessage, {
 	required _DdgResult ddg,
+	required List<_StructuredFact> wikidataFacts,
 	required List<_WikipediaSnippet> wikiSummaries,
+	required List<_CommunityTip> communityTips,
   }) {
 	if (!_isFactQuestion(userMessage)) return null;
 	final candidates = <String>[];
 	if (ddg.primarySnippet != null && ddg.primarySnippet!.isNotEmpty) {
 	  candidates.add(ddg.primarySnippet!);
 	}
+	for (final fact in wikidataFacts) {
+	  candidates.add(fact.summary);
+	}
 	for (final wiki in wikiSummaries) {
 	  candidates.add(wiki.summary);
+	}
+	for (final tip in communityTips) {
+	  candidates.add(tip.excerpt);
 	}
 	for (final candidate in candidates) {
 	  final line = _firstSentence(candidate);
@@ -186,6 +237,37 @@ class OnlineAiService {
 	  }
 	}
 	return null;
+  }
+
+  Future<List<_StructuredFact>> _wikidataFacts(String query, {int limit = 2}) async {
+	try {
+	  final tokens = _tokens(query);
+	  final searchUri = Uri.parse(
+		'https://www.wikidata.org/w/api.php'
+		'?action=wbsearchentities&search=${Uri.encodeQueryComponent(query)}&language=en&format=json&limit=${limit * 2}',
+	  );
+	  final searchRes = await http.get(searchUri).timeout(const Duration(seconds: 10));
+	  if (searchRes.statusCode != 200) return const <_StructuredFact>[];
+	  final data = jsonDecode(searchRes.body) as Map<String, dynamic>;
+	  final rows = (data['search'] as List?)?.cast<Map<String, dynamic>>() ?? const <Map<String, dynamic>>[];
+	  if (rows.isEmpty) return const <_StructuredFact>[];
+
+	  final out = <_StructuredFact>[];
+	  for (final row in rows) {
+		if (out.length >= limit) break;
+		final title = (row['label'] ?? '').toString().trim();
+		final description = (row['description'] ?? '').toString().trim();
+		final url = (row['concepturi'] ?? '').toString().trim();
+		if (title.isEmpty || description.isEmpty) continue;
+		final relevance = _textRelevanceScore(tokens, '$title $description');
+		if (relevance < 0.22) continue;
+		out.add(_StructuredFact(title: title, summary: description, relevance: relevance, url: url));
+	  }
+	  out.sort((a, b) => b.relevance.compareTo(a.relevance));
+	  return out;
+	} catch (_) {
+	  return const <_StructuredFact>[];
+	}
   }
 
   bool _isFactQuestion(String query) {
@@ -279,33 +361,82 @@ class OnlineAiService {
 	return null;
   }
 
-  Future<List<_CommunityTip>> _stackExchangeTips(String query, {int limit = 2}) async {
+	Future<List<_CommunityTip>> _stackExchangeAnswers(String query, {int limit = 2}) async {
 	try {
-	  final uri = Uri.parse(
-		'https://api.stackexchange.com/2.3/search/advanced'
-		'?order=desc&sort=relevance&site=gardening&q=${Uri.encodeQueryComponent(query)}&pagesize=${limit * 2}',
-	  );
-	  final res = await http.get(uri).timeout(const Duration(seconds: 10));
-	  if (res.statusCode != 200) return const <_CommunityTip>[];
-
-	  final data = jsonDecode(res.body) as Map<String, dynamic>;
-	  final items = (data['items'] as List?)?.cast<Map<String, dynamic>>() ??
-		  const <Map<String, dynamic>>[];
-	  if (items.isEmpty) return const <_CommunityTip>[];
-
 	  final out = <_CommunityTip>[];
-	  for (final item in items) {
+	  for (final site in _stackExchangeSitesForQuery(query)) {
 		if (out.length >= limit) break;
-		final title = (item['title'] ?? '').toString().trim();
-		final link = (item['link'] ?? '').toString().trim();
-		if (title.isEmpty || link.isEmpty) continue;
-		out.add(_CommunityTip(title: title, link: link));
+		final searchUri = Uri.parse(
+		  'https://api.stackexchange.com/2.3/search/advanced'
+		  '?order=desc&sort=relevance&site=$site&q=${Uri.encodeQueryComponent(query)}&pagesize=2&accepted=True&filter=withbody',
+		);
+		final res = await http.get(searchUri).timeout(const Duration(seconds: 10));
+		if (res.statusCode != 200) continue;
+		final data = jsonDecode(res.body) as Map<String, dynamic>;
+		final items = (data['items'] as List?)?.cast<Map<String, dynamic>>() ?? const <Map<String, dynamic>>[];
+		for (final item in items) {
+		  if (out.length >= limit) break;
+		  final title = _stripHtml((item['title'] ?? '').toString().trim());
+		  final link = (item['link'] ?? '').toString().trim();
+		  final acceptedId = item['accepted_answer_id'];
+		  String excerpt = _stripHtml((item['body_markdown'] ?? item['body'] ?? '').toString().trim());
+		  if (acceptedId != null) {
+			final answerExcerpt = await _fetchAcceptedAnswerExcerpt(acceptedId.toString(), site);
+			if (answerExcerpt != null && answerExcerpt.isNotEmpty) {
+			  excerpt = answerExcerpt;
+			}
+		  }
+		  if (title.isEmpty || link.isEmpty || excerpt.isEmpty) continue;
+		  out.add(_CommunityTip(title: title, link: link, excerpt: _truncate(excerpt, 280), site: site));
+		}
 	  }
 	  return out;
 	} catch (_) {
 	  return const <_CommunityTip>[];
 	}
   }
+
+	Future<String?> _fetchAcceptedAnswerExcerpt(String answerId, String site) async {
+	  try {
+		final uri = Uri.parse(
+		  'https://api.stackexchange.com/2.3/answers/$answerId'
+		  '?order=desc&sort=activity&site=$site&filter=withbody',
+		);
+		final res = await http.get(uri).timeout(const Duration(seconds: 10));
+		if (res.statusCode != 200) return null;
+		final data = jsonDecode(res.body) as Map<String, dynamic>;
+		final items = (data['items'] as List?)?.cast<Map<String, dynamic>>() ?? const <Map<String, dynamic>>[];
+		if (items.isEmpty) return null;
+		final body = _stripHtml((items.first['body_markdown'] ?? items.first['body'] ?? '').toString());
+		return body.trim().isEmpty ? null : body.trim();
+	  } catch (_) {
+		return null;
+	  }
+	}
+
+	List<String> _stackExchangeSitesForQuery(String query) {
+	  final q = query.toLowerCase();
+	  final sites = <String>['gardening'];
+	  if (q.contains('seed') || q.contains('species') || q.contains('plant') || q.contains('flower') || q.contains('fruit') || q.contains('botan')) {
+		sites.add('biology');
+	  }
+	  return sites;
+	}
+
+	String _stripHtml(String text) {
+	  return text
+		.replaceAll(RegExp(r'<[^>]+>'), ' ')
+		.replaceAll('&quot;', '"')
+		.replaceAll('&#39;', "'")
+		.replaceAll('&amp;', '&')
+		.replaceAll(RegExp(r'\s+'), ' ')
+		.trim();
+	}
+
+	String _truncate(String text, int maxLength) {
+	  if (text.length <= maxLength) return text;
+	  return '${text.substring(0, maxLength).trim()}...';
+	}
 
   String _quickGuide(String query) {
 	final q = query.toLowerCase();
@@ -388,11 +519,27 @@ class _WikipediaSnippet {
 	final String title;
 	final String summary;
 	final double relevance;
+	final String url;
 
 	const _WikipediaSnippet({
 	  required this.title,
 	  required this.summary,
 	  required this.relevance,
+	  required this.url,
+	});
+}
+
+class _StructuredFact {
+	final String title;
+	final String summary;
+	final double relevance;
+	final String url;
+
+	const _StructuredFact({
+	  required this.title,
+	  required this.summary,
+	  required this.relevance,
+	  required this.url,
 	});
 }
 
@@ -407,6 +554,13 @@ class _DdgResult {
 class _CommunityTip {
 	final String title;
 	final String link;
+	final String excerpt;
+	final String site;
 
-	const _CommunityTip({required this.title, required this.link});
+	const _CommunityTip({
+	  required this.title,
+	  required this.link,
+	  required this.excerpt,
+	  required this.site,
+	});
 }

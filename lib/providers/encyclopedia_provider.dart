@@ -211,6 +211,65 @@ class EncyclopediaProvider extends ChangeNotifier {
 	return null;
   }
 
+  List<PlantEntry> findSimilarLocalPlants({
+	required String commonName,
+	required String scientificName,
+	required String family,
+	String? snippet,
+	int limit = 3,
+  }) {
+	final common = commonName.toLowerCase().trim();
+	final scientific = scientificName.toLowerCase().trim();
+	final familyText = family.toLowerCase().trim();
+	final snippetText = (snippet ?? '').toLowerCase().trim();
+	final queryTokens = [
+		common,
+		scientific,
+		familyText,
+		snippetText,
+	]
+		.join(' ')
+		.split(RegExp(r'[^a-z0-9]+'))
+		.where((t) => t.length > 2)
+		.toSet();
+
+	final scored = <MapEntry<PlantEntry, int>>[];
+	for (final plant in _plants) {
+	  var score = 0;
+	  final name = plant.name.toLowerCase();
+	  final sci = plant.scientificName.toLowerCase();
+	  final plantFamily = plant.family.toLowerCase();
+	  final bag = [
+		name,
+		sci,
+		plantFamily,
+		plant.category.toLowerCase(),
+		plant.tags.join(' ').toLowerCase(),
+		plant.description.toLowerCase(),
+	  ].join(' ');
+
+	  if (familyText.isNotEmpty && plantFamily == familyText) score += 180;
+	  if (familyText.isNotEmpty && plantFamily.contains(familyText)) score += 90;
+	  if (common.isNotEmpty && (name.contains(common) || common.contains(name))) score += 120;
+	  if (scientific.isNotEmpty && (sci.contains(scientific) || scientific.contains(sci))) score += 130;
+
+	  for (final token in queryTokens) {
+		if (name == token || sci == token || plantFamily == token) {
+		  score += 80;
+		} else if (name.contains(token) || sci.contains(token) || bag.contains(token)) {
+		  score += 18;
+		}
+	  }
+
+	  if (score > 0) {
+		scored.add(MapEntry(plant, score));
+	  }
+	}
+
+	scored.sort((a, b) => b.value.compareTo(a.value));
+	return scored.take(limit).map((entry) => entry.key).toList();
+  }
+
 	Future<void> searchPlantsOnline(String query, {String? countryCode}) async {
 	final q = query.trim();
 	final requestId = ++_onlineSearchNonce;

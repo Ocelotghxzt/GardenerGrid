@@ -239,6 +239,7 @@ class _LibraryModeScreenState extends State<LibraryModeScreen> {
                                     imageUrl: null,
                                     description: plant.description,
                                     localPlant: plant,
+                                    similarPlants: const <PlantEntry>[],
                                     soil: soil,
                                     confidence: null,
                                     sourceSnippet: null,
@@ -278,6 +279,14 @@ class _LibraryModeScreenState extends State<LibraryModeScreen> {
                                       scientificName: item.scientificName,
                                       commonName: item.name,
                                     );
+                                    final similarPlants = local == null
+                                        ? encyclopedia.findSimilarLocalPlants(
+                                            commonName: item.name,
+                                            scientificName: item.scientificName,
+                                            family: item.family,
+                                            snippet: item.snippet,
+                                          )
+                                        : const <PlantEntry>[];
                                     _showPlantDetailSheet(
                                       title: item.name,
                                       subtitle: item.scientificName,
@@ -287,6 +296,7 @@ class _LibraryModeScreenState extends State<LibraryModeScreen> {
                                           ? item.snippet!
                                           : 'Open-source reference entry from ${item.source}.',
                                       localPlant: local,
+                                      similarPlants: similarPlants,
                                       soil: soil,
                                       confidence: item.confidence,
                                       sourceSnippet: item.snippet,
@@ -385,6 +395,7 @@ class _LibraryModeScreenState extends State<LibraryModeScreen> {
   required String source,
   required String description,
   required PlantEntry? localPlant,
+  required List<PlantEntry> similarPlants,
   required dynamic soil,
   String? imageUrl,
   double? confidence,
@@ -396,7 +407,7 @@ class _LibraryModeScreenState extends State<LibraryModeScreen> {
     isScrollControlled: true,
     builder: (_) {
     final locationLabel = _locationCtrl.text.trim();
-    final survival = _buildSurvivalAssessment(localPlant, soil, locationLabel);
+    final survival = _buildSurvivalAssessment(localPlant, similarPlants, soil, locationLabel);
     return SafeArea(
       child: DraggableScrollableSheet(
       expand: false,
@@ -452,6 +463,16 @@ class _LibraryModeScreenState extends State<LibraryModeScreen> {
         Text('Will it survive for me?', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
         const SizedBox(height: 8),
         Text(survival),
+        if (localPlant == null && similarPlants.isNotEmpty) ...[
+          const SizedBox(height: 16),
+          Text('Closest local analogs', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
+          const SizedBox(height: 8),
+          for (final analog in similarPlants)
+            _DetailRow(
+              label: analog.name,
+              value: '${analog.family} • Zone ${analog.hardinessZone} • pH ${analog.phMin.toStringAsFixed(1)}-${analog.phMax.toStringAsFixed(1)}',
+            ),
+        ],
         if (localPlant != null) ...[
           const SizedBox(height: 16),
           Text('Growing profile', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
@@ -490,17 +511,37 @@ class _LibraryModeScreenState extends State<LibraryModeScreen> {
   );
   }
 
-  String _buildSurvivalAssessment(PlantEntry? plant, dynamic soil, String locationLabel) {
+  String _buildSurvivalAssessment(PlantEntry? plant, List<PlantEntry> similarPlants, dynamic soil, String locationLabel) {
   final pieces = <String>[];
   if (locationLabel.isNotEmpty) {
     pieces.add('Area: $locationLabel.');
   }
 
   if (plant == null) {
-    pieces.add('This live result does not have a full local growing profile yet, so soil-fit and hardiness cannot be scored precisely.');
-    if (_zone == null) {
-    pieces.add('Add your USDA zone to compare winter survival more accurately.');
+    if (similarPlants.isEmpty) {
+      pieces.add('This live result does not have a full local growing profile yet, so soil-fit and hardiness cannot be scored precisely.');
+      if (_zone == null) {
+        pieces.add('Add your USDA zone to compare winter survival more accurately.');
+      }
+      return pieces.join(' ');
     }
+
+    final analog = similarPlants.first;
+    pieces.add('No exact local profile was found, so this estimate is inferred from similar plants in your library, especially ${analog.name}.');
+    pieces.add(_buildZoneAssessment(analog));
+
+    if (soil == null) {
+      pieces.add('No saved soil sample is loaded, so I cannot compare your current pH to the closest analog yet.');
+    } else {
+      final ph = soil.ph as double;
+      if (ph >= analog.phMin && ph <= analog.phMax) {
+        pieces.add('Your latest soil pH ${ph.toStringAsFixed(1)} fits the closest analog range of ${analog.phMin.toStringAsFixed(1)}-${analog.phMax.toStringAsFixed(1)}, which is a positive sign.');
+      } else {
+        pieces.add('Your latest soil pH ${ph.toStringAsFixed(1)} sits outside the closest analog range of ${analog.phMin.toStringAsFixed(1)}-${analog.phMax.toStringAsFixed(1)}, so soil amendment may be needed.');
+      }
+    }
+
+    pieces.add('Treat this as a best-fit estimate until a precise profile is available.');
     return pieces.join(' ');
   }
 

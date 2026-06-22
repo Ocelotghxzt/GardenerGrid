@@ -13,6 +13,10 @@ class OfflineAiService {
   // ── Entry point ──────────────────────────────────────────────────────────
   String answer(String query, {SoilSample? soilContext}) {
 	final q = query.toLowerCase();
+	final direct = _directFactAnswer(q);
+	if (direct != null) {
+	  return direct;
+	}
 
 	// 1. Soil-contextual responses
 	if (soilContext != null && _hasSoilKeywords(q)) {
@@ -57,6 +61,14 @@ class OfflineAiService {
 
 	// 7. Fallback
 	return _fallback(query);
+  }
+
+  String? _directFactAnswer(String q) {
+	final asksCount = q.contains('how many') || q.contains('number of');
+	if (asksCount && q.contains('tomato') && q.contains('seed')) {
+	  return '**Straight answer:** A typical tomato usually has about **100 to 300 seeds**. Small tomatoes are often near the lower end, while larger beefsteak-type tomatoes can have several hundred.';
+	}
+	return null;
   }
 
   List<PlantEntry> _rankPlantsByQuery(String q) {

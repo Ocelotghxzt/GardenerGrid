@@ -94,13 +94,14 @@ class EncyclopediaProvider extends ChangeNotifier {
   }
 
   List<PlantEntry> searchPlants(String query) {
-	if (query.trim().isEmpty) return _plants;
-	final q = query.toLowerCase();
+	final trimmed = query.trim();
+	if (trimmed.isEmpty) return _plants;
+	final q = trimmed.toLowerCase();
 	final tokens = q
 		.split(RegExp(r'[^a-z0-9]+'))
 		.where((t) => t.isNotEmpty)
 		.toList();
-	return _plants.where((plant) {
+	final matches = _plants.where((plant) {
 	  final bag = [
 		plant.name,
 		plant.scientificName,
@@ -117,7 +118,51 @@ class EncyclopediaProvider extends ChangeNotifier {
 		  plant.category.toLowerCase().contains(q) ||
 		  plant.tags.any((tag) => tag.toLowerCase().contains(q));
 	}).toList();
+
+	matches.sort((a, b) => _plantSearchScore(q, b).compareTo(_plantSearchScore(q, a)));
+	return matches;
   }
+
+	int _plantSearchScore(String q, PlantEntry plant) {
+	  final name = plant.name.toLowerCase();
+	  final scientific = plant.scientificName.toLowerCase();
+	  final category = plant.category.toLowerCase();
+	  final idText = plant.id.replaceAll('_', ' ').toLowerCase();
+	  final bag = [
+		name,
+		scientific,
+		category,
+		plant.family.toLowerCase(),
+		plant.tags.join(' ').toLowerCase(),
+		plant.description.toLowerCase(),
+	  ].join(' ');
+
+	  var score = 0;
+	  if (name == q) score += 500;
+	  if (scientific == q) score += 480;
+	  if (idText == q) score += 440;
+	  if (name.startsWith(q)) score += 220;
+	  if (scientific.startsWith(q)) score += 210;
+	  if (name.contains(q)) score += 120;
+	  if (scientific.contains(q)) score += 110;
+	  if (category == q) score += 80;
+
+	  final tokens = q
+		  .split(RegExp(r'[^a-z0-9]+'))
+		  .where((t) => t.isNotEmpty)
+		  .toList();
+	  for (final token in tokens) {
+		if (name == token || scientific == token) {
+		  score += 140;
+		} else if (name.startsWith(token) || scientific.startsWith(token)) {
+		  score += 60;
+		} else if (bag.contains(token)) {
+		  score += 15;
+		}
+	  }
+
+	  return score;
+	}
 
   Future<List<PlantEntry>> searchPlantsLocal(String query) =>
 	  _localStorage.searchPlants(query);
@@ -222,7 +267,7 @@ class EncyclopediaProvider extends ChangeNotifier {
 		  merged['${normalized.source}|${normalized.id}'] = normalized;
 		}
 		_onlinePlantResults = merged.values.toList()
-		  ..sort((a, b) => b.confidence.compareTo(a.confidence));
+		  ..sort((a, b) => _onlineSearchScore(q, b).compareTo(_onlineSearchScore(q, a)));
 
 		await _localStorage.cacheOnlineEncyclopediaResults(
 		  q,
@@ -241,6 +286,39 @@ class EncyclopediaProvider extends ChangeNotifier {
 	_onlineLoading = false;
 	notifyListeners();
   }
+
+	int _onlineSearchScore(String query, OnlinePlantSearchResult result) {
+	  final q = query.toLowerCase();
+	  final name = result.name.toLowerCase();
+	  final scientific = result.scientificName.toLowerCase();
+	  final family = result.family.toLowerCase();
+	  final snippet = (result.snippet ?? '').toLowerCase();
+	  final bag = '$name $scientific $family $snippet';
+	  var score = (result.confidence * 100).round();
+
+	  if (name == q) score += 500;
+	  if (scientific == q) score += 480;
+	  if (name.startsWith(q)) score += 220;
+	  if (scientific.startsWith(q)) score += 210;
+	  if (name.contains(q)) score += 120;
+	  if (scientific.contains(q)) score += 110;
+
+	  final tokens = q
+		  .split(RegExp(r'[^a-z0-9]+'))
+		  .where((t) => t.isNotEmpty)
+		  .toList();
+	  for (final token in tokens) {
+		if (name == token || scientific == token) {
+		  score += 120;
+		} else if (name.startsWith(token) || scientific.startsWith(token)) {
+		  score += 50;
+		} else if (bag.contains(token)) {
+		  score += 12;
+		}
+	  }
+
+	  return score;
+	}
 
   void clearOnlineSearch() {
 	_onlinePlantResults = [];

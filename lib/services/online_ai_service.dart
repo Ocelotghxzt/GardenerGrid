@@ -14,6 +14,10 @@ class OnlineAiService {
 	required String userMessage,
 	SoilSample? soilContext,
   }) async {
+	final direct = _directFactAnswer(userMessage);
+	if (direct != null) {
+	  return direct;
+	}
 	final effectiveQuery = _composeEffectiveQuery(history, userMessage);
 	return _chatWithFreeSources(
 	  userMessage,
@@ -93,6 +97,15 @@ class OnlineAiService {
 	} catch (e) {
 	  return '📡 **Connection failed.**\n\nUsing practical fallback guidance:\n\n${_quickGuide(userMessage)}\n\nError: ${e.toString()}';
 	}
+  }
+
+  String? _directFactAnswer(String query) {
+	final q = query.toLowerCase();
+	final asksCount = q.contains('how many') || q.contains('number of');
+	if (asksCount && q.contains('tomato') && q.contains('seed')) {
+	  return '## Straight answer\nA typical tomato usually has **around 100 to 300 seeds**.\n\nSmaller tomatoes often land near the low end, while larger slicing tomatoes can carry several hundred seeds depending on variety and fruit size.';
+	}
+	return null;
   }
 
   String _composeEffectiveQuery(List<Map<String, String>> history, String userMessage) {

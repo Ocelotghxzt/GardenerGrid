@@ -1,9 +1,12 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:geocoding/geocoding.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../../models/plant_entry.dart';
 import '../../providers/encyclopedia_provider.dart';
+import '../../providers/soil_provider.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/empty_state.dart';
 
@@ -16,11 +19,13 @@ class LibraryModeScreen extends StatefulWidget {
 
 class _LibraryModeScreenState extends State<LibraryModeScreen> {
   final _searchCtrl = TextEditingController();
-  final _countryCtrl = TextEditingController();
+  final _locationCtrl = TextEditingController();
   Timer? _debounce;
 
   String _query = '';
   bool _medicinalOnly = false;
+  int? _zone;
+  String? _countryCode;
   final Set<String> _sources = <String>{
     'GBIF',
     'iNaturalist',
@@ -35,6 +40,7 @@ class _LibraryModeScreenState extends State<LibraryModeScreen> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<EncyclopediaProvider>().load();
+      _useDeviceLocation(silent: true);
     });
   }
 
@@ -42,13 +48,14 @@ class _LibraryModeScreenState extends State<LibraryModeScreen> {
   void dispose() {
     _debounce?.cancel();
     _searchCtrl.dispose();
-    _countryCtrl.dispose();
+    _locationCtrl.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     final encyclopedia = context.watch<EncyclopediaProvider>();
+    final soil = context.watch<SoilProvider>().latestSample;
 
     final offline = _filterOffline(encyclopedia.searchPlants(_query));
     final online = encyclopedia.onlinePlantResults
@@ -85,16 +92,52 @@ class _LibraryModeScreenState extends State<LibraryModeScreen> {
               children: [
                 Expanded(
                   child: TextField(
-                    controller: _countryCtrl,
-                    maxLength: 2,
-                    textCapitalization: TextCapitalization.characters,
+                    controller: _locationCtrl,
                     decoration: const InputDecoration(
-                      labelText: 'Country code (optional)',
-                      hintText: 'US',
-                      counterText: '',
+                      labelText: 'Location or ZIP',
+                      hintText: 'Atlanta, GA or 30301',
+                      prefixIcon: Icon(Icons.place_outlined),
                     ),
-                    onChanged: (_) => _triggerOnlineSearch(),
+                    onChanged: (value) {
+                      setState(() {});
+                      _triggerOnlineSearch();
+                    },
                   ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: DropdownButtonFormField<int>(
+                    value: _zone,
+                    decoration: const InputDecoration(
+                      labelText: 'USDA zone',
+                    ),
+                    items: [
+                      const DropdownMenuItem<int>(
+                        value: null,
+                        child: Text('Unknown'),
+                      ),
+                      for (int zone = 3; zone <= 11; zone++)
+                        DropdownMenuItem<int>(
+                          value: zone,
+                          child: Text('Zone $zone'),
+                        ),
+                    ],
+                    onChanged: (value) {
+                      setState(() => _zone = value);
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            child: Row(
+              children: [
+                OutlinedButton.icon(
+                  onPressed: _useDeviceLocation,
+                  icon: const Icon(Icons.my_location),
+                  label: const Text('Use my location'),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
@@ -189,7 +232,18 @@ class _LibraryModeScreenState extends State<LibraryModeScreen> {
                                   title: Text(plant.name),
                                   subtitle: Text(plant.scientificName),
                                   trailing: const Icon(Icons.chevron_right),
-                                  onTap: () => context.push('/encyclopedia/plant/${plant.id}'),
+                                  onTap: () => _showPlantDetailSheet(
+                                    title: plant.name,
+                                    subtitle: plant.scientificName,
+                                    source: 'Offline Encyclopedia',
+                                    imageUrl: null,
+                                    description: plant.description,
+                                    localPlant: plant,
+                                    soil: soil,
+                                    confidence: null,
+                                    sourceSnippet: null,
+                                    fullEntryAction: () => context.push('/encyclopedia/plant/${plant.id}'),
+                                  ),
                                 ),
                               ),
                             ),
@@ -220,22 +274,25 @@ class _LibraryModeScreenState extends State<LibraryModeScreen> {
                                   ),
                                   isThreeLine: true,
                                   onTap: () {
-                                    showDialog<void>(
-                                      context: context,
-                                      builder: (_) => AlertDialog(
-                                        title: Text(item.name),
-                                        content: Text(
-                                          item.snippet?.trim().isNotEmpty == true
-                                              ? item.snippet!
-                                              : 'Open-source reference entry from ${item.source}.',
-                                        ),
-                                        actions: [
-                                          TextButton(
-                                            onPressed: () => Navigator.of(context).pop(),
-                                            child: const Text('Close'),
-                                          ),
-                                        ],
-                                      ),
+                                    final local = encyclopedia.findLocalPlantMatch(
+                                      scientificName: item.scientificName,
+                                      commonName: item.name,
+                                    );
+                                    _showPlantDetailSheet(
+                                      title: item.name,
+                                      subtitle: item.scientificName,
+                                      source: item.source,
+                                      imageUrl: item.imageUrl,
+                                      description: item.snippet?.trim().isNotEmpty == true
+                                          ? item.snippet!
+                                          : 'Open-source reference entry from ${item.source}.',
+                                      localPlant: local,
+                                      soil: soil,
+                                      confidence: item.confidence,
+                                      sourceSnippet: item.snippet,
+                                      fullEntryAction: local == null
+                                          ? null
+                                          : () => context.push('/encyclopedia/plant/${local.id}'),
                                     );
                                   },
                                 ),
@@ -268,18 +325,230 @@ class _LibraryModeScreenState extends State<LibraryModeScreen> {
     _debounce?.cancel();
     _debounce = Timer(const Duration(milliseconds: 450), () {
       if (!mounted) return;
-      final cc = _countryCtrl.text.trim().toUpperCase();
       context.read<EncyclopediaProvider>().searchPlantsOnline(
             _query,
-            countryCode: cc.length == 2 ? cc : null,
+            countryCode: _effectiveCountryCode,
           );
     });
+  }
+
+  String? get _effectiveCountryCode {
+  final raw = _locationCtrl.text.trim().toUpperCase();
+  if (_countryCode != null && _countryCode!.isNotEmpty) return _countryCode;
+  return raw.length == 2 ? raw : null;
+  }
+
+  Future<void> _useDeviceLocation({bool silent = false}) async {
+  try {
+    var permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+    permission = await Geolocator.requestPermission();
+    }
+    if (permission == LocationPermission.denied ||
+      permission == LocationPermission.deniedForever) {
+    if (!silent && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Location permission denied. You can still type a ZIP or area manually.')),
+      );
+    }
+    return;
+    }
+
+    final pos = await Geolocator.getCurrentPosition();
+    final marks = await placemarkFromCoordinates(pos.latitude, pos.longitude);
+    if (!mounted) return;
+    final place = marks.isNotEmpty ? marks.first : null;
+    final labelParts = [
+    place?.locality,
+    place?.administrativeArea,
+    place?.postalCode,
+    ].whereType<String>().where((part) => part.trim().isNotEmpty).toList();
+    setState(() {
+    _countryCode = place?.isoCountryCode;
+    if (labelParts.isNotEmpty) {
+      _locationCtrl.text = labelParts.join(', ');
+    }
+    });
+    _triggerOnlineSearch();
+  } catch (_) {
+    if (!silent && mounted) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Could not resolve your location right now. Enter a ZIP or area manually.')),
+    );
+    }
+  }
+  }
+
+  void _showPlantDetailSheet({
+  required String title,
+  required String subtitle,
+  required String source,
+  required String description,
+  required PlantEntry? localPlant,
+  required dynamic soil,
+  String? imageUrl,
+  double? confidence,
+  String? sourceSnippet,
+  VoidCallback? fullEntryAction,
+  }) {
+  showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    builder: (_) {
+    final locationLabel = _locationCtrl.text.trim();
+    final survival = _buildSurvivalAssessment(localPlant, soil, locationLabel);
+    return SafeArea(
+      child: DraggableScrollableSheet(
+      expand: false,
+      initialChildSize: 0.78,
+      maxChildSize: 0.92,
+      builder: (context, controller) => ListView(
+        controller: controller,
+        padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+        children: [
+        Center(
+          child: Container(
+          width: 44,
+          height: 5,
+          decoration: BoxDecoration(
+            color: Colors.black26,
+            borderRadius: BorderRadius.circular(999),
+          ),
+          ),
+        ),
+        const SizedBox(height: 16),
+        if (imageUrl != null) ...[
+          ClipRRect(
+          borderRadius: BorderRadius.circular(16),
+          child: Image.network(
+            imageUrl,
+            height: 180,
+            fit: BoxFit.cover,
+            errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+          ),
+          ),
+          const SizedBox(height: 16),
+        ],
+        Text(title, style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800)),
+        const SizedBox(height: 4),
+        Text(subtitle, style: Theme.of(context).textTheme.titleMedium?.copyWith(fontStyle: FontStyle.italic)),
+        const SizedBox(height: 10),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+          Chip(label: Text(source)),
+          if (confidence != null)
+            Chip(label: Text('${(confidence * 100).toStringAsFixed(0)}% match')),
+          if (_zone != null)
+            Chip(label: Text('Zone $_zone')),
+          if (locationLabel.isNotEmpty)
+            Chip(label: Text(locationLabel)),
+          ],
+        ),
+        const SizedBox(height: 16),
+        Text(description),
+        const SizedBox(height: 16),
+        Text('Will it survive for me?', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
+        const SizedBox(height: 8),
+        Text(survival),
+        if (localPlant != null) ...[
+          const SizedBox(height: 16),
+          Text('Growing profile', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
+          const SizedBox(height: 8),
+          _DetailRow(label: 'Soil', value: localPlant.soilPreference),
+          _DetailRow(label: 'pH range', value: '${localPlant.phMin.toStringAsFixed(1)} - ${localPlant.phMax.toStringAsFixed(1)}'),
+          _DetailRow(label: 'Sunlight', value: localPlant.sunlight),
+          _DetailRow(label: 'Water', value: localPlant.water),
+          _DetailRow(label: 'Hardiness', value: localPlant.hardinessZone),
+          _DetailRow(label: 'Propagation', value: localPlant.propagation),
+          const SizedBox(height: 8),
+          Text(localPlant.gardeningTips),
+        ],
+        if (sourceSnippet != null && sourceSnippet.trim().isNotEmpty && sourceSnippet.trim() != description.trim()) ...[
+          const SizedBox(height: 16),
+          Text('Source note', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
+          const SizedBox(height: 8),
+          Text(sourceSnippet),
+        ],
+        if (fullEntryAction != null) ...[
+          const SizedBox(height: 20),
+          FilledButton.icon(
+          onPressed: () {
+            Navigator.of(context).pop();
+            fullEntryAction();
+          },
+          icon: const Icon(Icons.open_in_new),
+          label: const Text('Open full profile'),
+          ),
+        ],
+        ],
+      ),
+      ),
+    );
+    },
+  );
+  }
+
+  String _buildSurvivalAssessment(PlantEntry? plant, dynamic soil, String locationLabel) {
+  final pieces = <String>[];
+  if (locationLabel.isNotEmpty) {
+    pieces.add('Area: $locationLabel.');
+  }
+
+  if (plant == null) {
+    pieces.add('This live result does not have a full local growing profile yet, so soil-fit and hardiness cannot be scored precisely.');
+    if (_zone == null) {
+    pieces.add('Add your USDA zone to compare winter survival more accurately.');
+    }
+    return pieces.join(' ');
+  }
+
+  final zoneNote = _buildZoneAssessment(plant);
+  if (zoneNote.isNotEmpty) {
+    pieces.add(zoneNote);
+  }
+
+  if (soil == null) {
+    pieces.add('No saved soil sample is loaded, so I cannot compare your current pH and nutrients yet.');
+  } else {
+    final ph = soil.ph as double;
+    if (ph >= plant.phMin && ph <= plant.phMax) {
+    pieces.add('Your latest soil pH ${ph.toStringAsFixed(1)} is inside this plant\'s preferred ${plant.phMin.toStringAsFixed(1)}-${plant.phMax.toStringAsFixed(1)} range.');
+    } else {
+    pieces.add('Your latest soil pH ${ph.toStringAsFixed(1)} is outside this plant\'s preferred ${plant.phMin.toStringAsFixed(1)}-${plant.phMax.toStringAsFixed(1)} range, so amendment would likely help.');
+    }
+    pieces.add('Water need: ${plant.water}. Sun need: ${plant.sunlight}.');
+  }
+
+  return pieces.join(' ');
+  }
+
+  String _buildZoneAssessment(PlantEntry plant) {
+  if (_zone == null) {
+    return 'Select your USDA zone to check outdoor survival against ${plant.hardinessZone}.';
+  }
+  final matches = RegExp(r'\d+').allMatches(plant.hardinessZone).map((m) => int.tryParse(m.group(0)!)).whereType<int>().toList();
+  if (matches.isEmpty) {
+    return 'This plant lists hardiness ${plant.hardinessZone}. Compare that against your Zone $_zone.';
+  }
+  final minZone = matches.reduce((a, b) => a < b ? a : b);
+  final maxZone = matches.reduce((a, b) => a > b ? a : b);
+  if (_zone! < minZone) {
+    return 'Your Zone $_zone is colder than the listed ${plant.hardinessZone} range, so outdoor survival is unlikely without protection or container overwintering.';
+  }
+  if (_zone! > maxZone) {
+    return 'Your Zone $_zone is warmer than the listed ${plant.hardinessZone} range, so heat or chill-hour stress may reduce performance.';
+  }
+  return 'Your Zone $_zone falls inside the listed ${plant.hardinessZone} range, so this plant should be climatically viable in your area if other conditions are met.';
   }
 
   void _resetFilters() {
     setState(() {
       _query = '';
       _medicinalOnly = false;
+      _zone = null;
+      _countryCode = null;
       _sources
         ..clear()
         ..addAll(const {
@@ -291,9 +560,24 @@ class _LibraryModeScreenState extends State<LibraryModeScreen> {
           'Wikidata Search',
         });
       _searchCtrl.clear();
-      _countryCtrl.clear();
+      _locationCtrl.clear();
     });
     context.read<EncyclopediaProvider>().clearOnlineSearch();
+  }
+}
+
+class _DetailRow extends StatelessWidget {
+  final String label;
+  final String value;
+
+  const _DetailRow({required this.label, required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+	return Padding(
+	  padding: const EdgeInsets.only(bottom: 6),
+	  child: Text('$label: $value'),
+	);
   }
 }
 

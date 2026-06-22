@@ -259,7 +259,30 @@ class MarketService {
       orElse: () => '',
     );
 
-    if (key.isEmpty) return [];
+    if (key.isEmpty) {
+      return [
+        MarketPrice(
+          cropName: cropName,
+          pricePerUnit: 2.20,
+          unit: 'per lb',
+          fetchedAt: now,
+          marketName: 'Average Retail (US)',
+          marketAddress: 'National baseline',
+          source: 'Fallback Retail Average',
+          region: 'USA',
+        ),
+        MarketPrice(
+          cropName: cropName,
+          pricePerUnit: 1.45,
+          unit: 'per lb',
+          fetchedAt: now,
+          marketName: 'Average Wholesale (US)',
+          marketAddress: 'National baseline',
+          source: 'Fallback Wholesale Average',
+          region: 'USA',
+        ),
+      ];
+    }
 
     final item = fallback[key]!;
     return [

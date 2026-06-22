@@ -193,7 +193,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
                 _QuickActionCard(
                   icon: Icons.forum,
-                  title: 'Mesh Chat',
+                  title: 'GardenerGrid Chat',
                   subtitle: 'Local farmer channels',
                   onTap: () => context.push('/mesh/chat'),
                 ),

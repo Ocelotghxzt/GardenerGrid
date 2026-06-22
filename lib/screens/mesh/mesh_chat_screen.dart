@@ -41,7 +41,7 @@ class _MeshChatScreenState extends State<MeshChatScreen> {
 		: 'Farmer';
 
 	return Scaffold(
-	  appBar: AppBar(title: const Text('Mesh Community Chat')),
+	  appBar: AppBar(title: const Text('GardenerGrid Chat')),
 	  body: Column(
 		children: [
 		  if (ble.connectedMeshNodeIds.isNotEmpty)

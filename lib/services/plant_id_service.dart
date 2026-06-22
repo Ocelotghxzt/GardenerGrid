@@ -140,6 +140,7 @@ class PlantIdService {
       final sci = (candidate['scientific'] ?? '').toString();
       final common = (candidate['common'] ?? '').toString();
       var score = ((candidate['score'] as num?)?.toDouble() ?? 0.0).clamp(0.0, 1.0);
+      final rank = (candidate['rank'] ?? '').toString().toLowerCase();
 
       final match = _matchCandidateToLocal(
         plants: plants,
@@ -147,6 +148,20 @@ class PlantIdService {
         commonName: common,
       );
       if (match == null) continue;
+
+      final similarityBoost = _candidateSimilarityBoost(
+        scientificName: sci,
+        commonName: common,
+        local: match,
+      );
+
+      score = ((score * 0.82) + (similarityBoost * 0.18)).clamp(0.0, 1.0);
+      if (rank == 'genus') {
+        score = (score * 0.9).clamp(0.0, 1.0);
+      }
+      if (rank == 'family' || rank == 'order') {
+        score = (score * 0.8).clamp(0.0, 1.0);
+      }
 
       if (countryCode != null && countryCode.trim().isNotEmpty) {
         score = await _applyRegionBoost(score, sci.isNotEmpty ? sci : match.scientificName, countryCode);
@@ -251,7 +266,9 @@ class PlantIdService {
 
     final scientific = (taxon['name'] ?? item['name'] ?? '').toString();
     final common = (taxon['preferred_common_name'] ?? item['preferred_common_name'] ?? '').toString();
-    final score = ((item['combined_score'] ?? item['score'] ?? item['vision_score'] ?? 0.0) as num).toDouble();
+    final rawScore = ((item['combined_score'] ?? item['score'] ?? item['vision_score'] ?? 0.0) as num).toDouble();
+    final score = _normalizeScore(rawScore);
+    final rank = (taxon['rank'] ?? item['rank'] ?? '').toString();
 
     if (scientific.isEmpty && common.isEmpty) return null;
 
@@ -259,7 +276,26 @@ class PlantIdService {
       'scientific': scientific,
       'common': common,
       'score': score,
+      'rank': rank,
     };
+  }
+
+  double _normalizeScore(double raw) {
+    if (raw <= 0) return 0;
+    if (raw <= 1) return raw;
+    if (raw <= 100) return raw / 100.0;
+    if (raw <= 1000) return raw / 1000.0;
+    return 1.0;
+  }
+
+  double _candidateSimilarityBoost({
+    required String scientificName,
+    required String commonName,
+    required PlantEntry local,
+  }) {
+    final sciScore = _nameSimilarity(_norm(scientificName), _norm(local.scientificName));
+    final commonScore = _nameSimilarity(_norm(commonName), _norm(local.name));
+    return sciScore > commonScore ? sciScore : commonScore;
   }
 
   PlantEntry? _matchCandidateToLocal({

@@ -10,6 +10,8 @@ class OnlineAiService {
   static const _keyApiKey = 'ai_api_key';
   static const _keyEndpoint = 'ai_endpoint';
 	static const _defaultEndpoint = 'https://api.duckduckgo.com/';
+	static const _ollamaEndpoint = 'http://127.0.0.1:11434/api/generate';
+	static const _ollamaModel = 'llama3.2:3b-instruct-q4_K_M';
 
   // ── Configuration ─────────────────────────────────────────────────────────
   Future<String?> getApiKey() async {
@@ -100,7 +102,68 @@ Guidelines:
 	  }
 	}
 
+	final ollama = await _chatWithOllama(
+	  history: history,
+	  userMessage: userMessage,
+	  soilContext: soilContext,
+	);
+	if (ollama != null && ollama.trim().isNotEmpty) {
+	  return '## Online AI (Local LLM)\n$ollama';
+	}
+
 	return _chatWithFreeSources(userMessage, soilContext: soilContext);
+  }
+
+  Future<String?> _chatWithOllama({
+	required List<Map<String, String>> history,
+	required String userMessage,
+	SoilSample? soilContext,
+  }) async {
+	try {
+	  final recent = history
+		  .where((m) => (m['role'] == 'user' || m['role'] == 'assistant'))
+		  .toList();
+	  final lastTurns = recent.length > 8 ? recent.sublist(recent.length - 8) : recent;
+
+	  final contextLines = StringBuffer();
+	  for (final m in lastTurns) {
+		contextLines.writeln('${m['role']}: ${m['content']}');
+	  }
+
+	  final prompt = '''${_systemPrompt(soilContext: soilContext)}
+
+Conversation history:
+${contextLines.toString()}
+
+User request:
+$userMessage
+
+Respond with practical, direct steps and avoid generic filler.''';
+
+	  final response = await http
+		  .post(
+			Uri.parse(_ollamaEndpoint),
+			headers: {'Content-Type': 'application/json'},
+			body: jsonEncode({
+			  'model': _ollamaModel,
+			  'prompt': prompt,
+			  'stream': false,
+			  'options': {
+				'temperature': 0.4,
+				'top_p': 0.9,
+			  }
+			}),
+		  )
+		  .timeout(const Duration(seconds: 18));
+
+	  if (response.statusCode != 200) return null;
+	  final data = jsonDecode(response.body) as Map<String, dynamic>;
+	  final text = (data['response'] ?? '').toString().trim();
+	  if (text.isEmpty) return null;
+	  return text;
+	} catch (_) {
+	  return null;
+	}
   }
 
   Future<String?> _chatWithCustomEndpoint({
@@ -156,6 +219,10 @@ Guidelines:
 	SoilSample? soilContext,
   }) async {
 	try {
+	  final searchTitle = await _wikipediaSearchTopTitle(userMessage);
+	  final wikiTitle = searchTitle ?? userMessage;
+	  final wikiText = await _wikipediaSummary(wikiTitle);
+
 	  final ddgUri = Uri.parse(
 		'https://api.duckduckgo.com/?q=${Uri.encodeQueryComponent(userMessage)}&format=json&no_html=1&no_redirect=1',
 	  );
@@ -171,8 +238,6 @@ Guidelines:
 		abstractText = (data['AbstractText'] ?? '').toString().trim();
 		abstractUrl = (data['AbstractURL'] ?? '').toString().trim();
 	  }
-
-	  final wikiText = await _wikipediaSummary(userMessage);
 
 	  final sb = StringBuffer();
 	  sb.writeln('## Online Answer (Free Sources)');
@@ -192,9 +257,14 @@ Guidelines:
 		sb.writeln();
 	  }
 
-	  if (sb.length < 90) {
-		sb.writeln('I could not find enough online context for that exact phrasing.');
-		sb.writeln('Try a more specific question with plant or crop name.');
+	  if ((abstractText == null || abstractText.isEmpty) &&
+		  (wikiText == null || wikiText.isEmpty)) {
+		sb.writeln(_quickGuide(userMessage));
+		sb.writeln();
+	  } else {
+		sb.writeln('**Actionable steps:**');
+		sb.writeln(_quickGuide(userMessage));
+		sb.writeln();
 	  }
 
 	  if (soilContext != null) {
@@ -212,8 +282,85 @@ Guidelines:
 	  sb.writeln('\n_No sign-in or paid key required for this mode._');
 	  return sb.toString();
 	} catch (e) {
-	  return '📡 **Connection failed.**\n\nFree online sources were unreachable. Error: ${e.toString()}';
+	  return '📡 **Connection failed.**\n\nUsing practical fallback guidance:\n\n${_quickGuide(userMessage)}\n\nError: ${e.toString()}';
 	}
+  }
+
+  Future<String?> _wikipediaSearchTopTitle(String query) async {
+	try {
+	  final uri = Uri.parse(
+		'https://en.wikipedia.org/w/api.php'
+		'?action=query&list=search&format=json&utf8=1&srlimit=1&srsearch=${Uri.encodeQueryComponent(query)}',
+	  );
+	  final response = await http.get(uri).timeout(const Duration(seconds: 10));
+	  if (response.statusCode != 200) return null;
+	  final data = jsonDecode(response.body) as Map<String, dynamic>;
+	  final q = data['query'] as Map<String, dynamic>?;
+	  final rows = (q?['search'] as List?)?.cast<Map<String, dynamic>>() ??
+		  const <Map<String, dynamic>>[];
+	  if (rows.isEmpty) return null;
+	  return (rows.first['title'] ?? '').toString().trim();
+	} catch (_) {
+	  return null;
+	}
+  }
+
+  String _quickGuide(String query) {
+	final q = query.toLowerCase();
+	final crop = _detectCrop(q);
+	final title = crop ?? 'general gardening';
+
+	final steps = <String>[];
+	if (crop == 'tomato' || crop == 'tomatoes') {
+	  steps.addAll([
+		'1. Start seeds indoors 6-8 weeks before last frost, or transplant healthy starts.',
+		'2. Plant in full sun with rich, well-drained soil; mix in compost before planting.',
+		'3. Bury stems deep to encourage stronger rooting and spacing of 18-24 inches.',
+		'4. Water deeply 1-2 times weekly and mulch to stabilize moisture.',
+		'5. Add support early (cage/stake) and feed every 2-3 weeks once fruit sets.',
+	  ]);
+	} else if (crop == 'apple' || crop == 'apples') {
+	  steps.addAll([
+		'1. Choose a cultivar matched to your chill hours and hardiness zone.',
+		'2. Plant in full sun with excellent drainage and proper root flare at soil line.',
+		'3. Maintain pruning for open canopy and strong scaffold structure.',
+		'4. Water consistently during establishment and apply mulch away from trunk.',
+		'5. Use pollination-compatible varieties for stronger fruit set.',
+	  ]);
+	} else {
+	  steps.addAll([
+		'1. Match crop to your local season and temperature window.',
+		'2. Prepare soil with compost and verify pH for that crop range.',
+		'3. Plant at correct depth/spacing and keep moisture consistent during establishment.',
+		'4. Monitor for pests/disease weekly and intervene early with integrated methods.',
+		'5. Feed at key growth stages (vegetative, flowering, fruiting) rather than all at once.',
+	  ]);
+	}
+
+	return 'Practical plan for **$title**:\n\n${steps.join('\n')}';
+  }
+
+  String? _detectCrop(String q) {
+	const crops = [
+	  'tomato',
+	  'tomatoes',
+	  'apple',
+	  'apples',
+	  'pepper',
+	  'peppers',
+	  'cucumber',
+	  'cucumbers',
+	  'lettuce',
+	  'basil',
+	  'potato',
+	  'potatoes',
+	  'onion',
+	  'onions',
+	];
+	for (final crop in crops) {
+	  if (q.contains(crop)) return crop;
+	}
+	return null;
   }
 
   Future<String?> _wikipediaSummary(String query) async {

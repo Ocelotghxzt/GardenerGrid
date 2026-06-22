@@ -117,15 +117,12 @@ class _GardenerGridAppState extends State<GardenerGridApp> {
           create: (_) => AiAssistantProvider(onlineAiService),
           update: (_, encyclopedia, aiAssistant) {
             final provider = aiAssistant ?? AiAssistantProvider(onlineAiService);
-            if (encyclopedia.plants.isNotEmpty ||
-                encyclopedia.foragingEntries.isNotEmpty) {
-              provider.setOfflineService(
-                OfflineAiService(
-                  plants: encyclopedia.plants,
-                  foraging: encyclopedia.foragingEntries,
-                ),
-              );
-            }
+            provider.setOfflineService(
+              OfflineAiService(
+                plants: encyclopedia.plants,
+                foraging: encyclopedia.foragingEntries,
+              ),
+            );
             return provider;
           },
         ),

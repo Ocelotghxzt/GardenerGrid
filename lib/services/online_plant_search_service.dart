@@ -46,15 +46,22 @@ class OnlinePlantSearchResult {
     );
   }
 
-  OnlinePlantSearchResult copyWith({double? confidence}) {
+  OnlinePlantSearchResult copyWith({
+    double? confidence,
+    String? name,
+    String? scientificName,
+    String? family,
+    String? snippet,
+    String? imageUrl,
+  }) {
     return OnlinePlantSearchResult(
       id: id,
-      name: name,
-      scientificName: scientificName,
-      family: family,
+      name: name ?? this.name,
+      scientificName: scientificName ?? this.scientificName,
+      family: family ?? this.family,
       source: source,
-      snippet: snippet,
-      imageUrl: imageUrl,
+      snippet: snippet ?? this.snippet,
+      imageUrl: imageUrl ?? this.imageUrl,
       confidence: confidence ?? this.confidence,
     );
   }
@@ -62,6 +69,25 @@ class OnlinePlantSearchResult {
 
 /// Live online search using open data sources and literal open search engines.
 class OnlinePlantSearchService {
+  static const Map<String, String> _commonToScientific = {
+    'tomato': 'solanum lycopersicum',
+    'apple': 'malus domestica',
+    'potato': 'solanum tuberosum',
+    'corn': 'zea mays',
+    'wheat': 'triticum aestivum',
+    'soybean': 'glycine max',
+    'strawberry': 'fragaria x ananassa',
+    'onion': 'allium cepa',
+    'garlic': 'allium sativum',
+    'lettuce': 'lactuca sativa',
+    'cucumber': 'cucumis sativus',
+    'pepper': 'capsicum annuum',
+  };
+
+  static final Map<String, String> _scientificToCommon = {
+    for (final entry in _commonToScientific.entries) entry.value: entry.key,
+  };
+
   static const Map<String, double> _sourceWeight = {
     'GBIF': 0.86,
     'iNaturalist': 0.84,
@@ -78,20 +104,18 @@ class OnlinePlantSearchService {
     final q = query.trim();
     if (q.length < 2) return const [];
 
-    final variants = _buildQueryVariants(q).take(3).toList();
-    final allBatches = <List<OnlinePlantSearchResult>>[];
-
+    final variants = _buildQueryVariants(q).take(2).toList();
+    final tasks = <Future<List<OnlinePlantSearchResult>>>[];
     for (final variant in variants) {
-      final batches = await Future.wait<List<OnlinePlantSearchResult>>([
-        _withRetry(() => _searchGbif(variant)),
-        _withRetry(() => _searchINaturalist(variant)),
-        _withRetry(() => _searchOpenFarm(variant)),
-        _withRetry(() => _searchWikipedia(variant)),
-        _withRetry(() => _searchOpenverse(variant)),
-        _withRetry(() => _searchWikidata(variant)),
-      ]);
-      allBatches.addAll(batches);
+      tasks.add(_withRetry(() => _searchGbif(variant)));
+      tasks.add(_withRetry(() => _searchINaturalist(variant)));
+      tasks.add(_withRetry(() => _searchOpenFarm(variant)));
+      tasks.add(_withRetry(() => _searchWikipedia(variant)));
+      tasks.add(_withRetry(() => _searchOpenverse(variant)));
+      tasks.add(_withRetry(() => _searchWikidata(variant)));
     }
+
+    final allBatches = await Future.wait<List<OnlinePlantSearchResult>>(tasks);
 
     final results = <OnlinePlantSearchResult>[];
     for (final batch in allBatches) {
@@ -146,6 +170,18 @@ class OnlinePlantSearchService {
       variants.add('${q}s');
     }
 
+    for (final entry in _commonToScientific.entries) {
+      if (q.contains(entry.key)) {
+        variants.add(entry.value);
+      }
+    }
+
+    for (final entry in _scientificToCommon.entries) {
+      if (q.contains(entry.key)) {
+        variants.add(entry.value);
+      }
+    }
+
     return variants.toList();
   }
 
@@ -197,9 +233,26 @@ class OnlinePlantSearchService {
       return rows.map((row) {
         final sci =
             (row['scientificName'] ?? row['canonicalName'] ?? 'Unknown').toString();
-        final common = (row['vernacularName'] ?? sci).toString();
+        final canonical = (row['canonicalName'] ?? '').toString().toLowerCase();
+        final mappedCommon = _scientificToCommon.entries
+            .where((e) => canonical.contains(e.key))
+            .map((e) => e.value)
+            .cast<String?>()
+            .firstWhere((_) => true, orElse: () => null);
+        final common = (row['vernacularName'] ?? mappedCommon ?? sci).toString();
         final family = (row['family'] ?? 'Unknown').toString();
+        final order = (row['order'] ?? '').toString();
+        final rank = (row['rank'] ?? '').toString();
+        final status = (row['taxonomicStatus'] ?? '').toString();
+        final habitat = (row['habitats'] ?? row['habitat'] ?? '').toString();
         final taxonId = (row['key'] ?? '').toString();
+        final snippetParts = <String>[
+          if (family.isNotEmpty && family != 'Unknown') 'Family: $family',
+          if (order.isNotEmpty) 'Order: $order',
+          if (rank.isNotEmpty) 'Rank: $rank',
+          if (status.isNotEmpty) 'Status: $status',
+          if (habitat.isNotEmpty) 'Habitat: $habitat',
+        ];
 
         return OnlinePlantSearchResult(
           id: 'gbif_$taxonId',
@@ -207,7 +260,9 @@ class OnlinePlantSearchService {
           scientificName: sci,
           family: family,
           source: 'GBIF',
-          snippet: 'Open biodiversity taxonomy record',
+          snippet: snippetParts.isEmpty
+              ? 'Open biodiversity taxonomy details available.'
+              : snippetParts.join(' • '),
           confidence: 0.72,
         );
       }).toList();
@@ -278,24 +333,62 @@ class OnlinePlantSearchService {
       final rows = (queryNode?['search'] as List?)?.cast<Map<String, dynamic>>() ??
           const <Map<String, dynamic>>[];
 
-      return rows.map((row) {
+      final out = <OnlinePlantSearchResult>[];
+      for (final row in rows.take(10)) {
         final title = (row['title'] ?? 'Unknown').toString();
         final pageId = (row['pageid'] ?? '').toString();
-        final snippet = (row['snippet'] ?? '').toString().replaceAll(RegExp(r'<[^>]*>'), '');
+        final snippet =
+            (row['snippet'] ?? '').toString().replaceAll(RegExp(r'<[^>]*>'), '');
+        final details = await _fetchWikipediaSummary(title);
 
-        return OnlinePlantSearchResult(
-          id: 'wiki_$pageId',
-          name: title,
-          scientificName: title,
-          family: 'Wikipedia',
-          source: 'Wikipedia Search',
-          snippet: snippet,
-          confidence: 0.58,
+        out.add(
+          OnlinePlantSearchResult(
+            id: 'wiki_$pageId',
+            name: details['displayName']?.toString() ?? title,
+            scientificName: details['scientific']?.toString() ?? title,
+            family: details['family']?.toString() ?? 'Wikipedia',
+            source: 'Wikipedia Search',
+            snippet: (details['summary']?.toString().trim().isNotEmpty == true)
+                ? details['summary'].toString()
+                : snippet,
+            imageUrl: details['imageUrl']?.toString(),
+            confidence: 0.62,
+          ),
         );
-      }).toList();
+      }
+      return out;
     } catch (_) {
       return const [];
     }
+  }
+
+  Future<Map<String, String?>> _fetchWikipediaSummary(String title) async {
+	try {
+	  final uri = Uri.parse(
+		'https://en.wikipedia.org/api/rest_v1/page/summary/${Uri.encodeComponent(title)}',
+	  );
+	  final response = await http.get(uri).timeout(const Duration(seconds: 8));
+	  if (response.statusCode != 200) {
+		return const <String, String?>{};
+	  }
+
+	  final data = jsonDecode(response.body) as Map<String, dynamic>;
+	  final extract = (data['extract'] ?? '').toString().trim();
+	  final desc = (data['description'] ?? '').toString().trim();
+	  final thumbnail = data['thumbnail'] is Map<String, dynamic>
+		  ? (data['thumbnail']['source'] ?? '').toString()
+		  : '';
+
+	  return {
+		'summary': extract.isEmpty ? null : extract,
+		'imageUrl': thumbnail.isEmpty ? null : thumbnail,
+		'displayName': title,
+		'scientific': title,
+		'family': desc.isEmpty ? 'Wikipedia' : desc,
+	  };
+	} catch (_) {
+	  return const <String, String?>{};
+	}
   }
 
   // Literal open search engine media index (Openverse).

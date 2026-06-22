@@ -65,9 +65,11 @@ GoRouter makeRouter(AuthProvider auth) => GoRouter(
             path: '/bluetooth/mesh-settings',
             builder: (_, __) => const MeshSettingsScreen()),
         GoRoute(
-            path: '/encyclopedia', builder: (_, __) => const EncyclopediaScreen()),
+            path: '/encyclopedia', builder: (_, __) => const LibraryModeScreen()),
         GoRoute(
             path: '/encyclopedia/library', builder: (_, __) => const LibraryModeScreen()),
+        GoRoute(
+            path: '/encyclopedia/classic', builder: (_, __) => const EncyclopediaScreen()),
         GoRoute(
           path: '/encyclopedia/plant/:id',
           builder: (_, state) =>

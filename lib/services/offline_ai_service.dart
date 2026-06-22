@@ -247,10 +247,32 @@ class OfflineAiService {
   PlantEntry? _findPlant(String q) {
 	for (final p in plants) {
 	  if (q.contains(p.name.toLowerCase()) ||
+		  q.contains(p.scientificName.toLowerCase()) ||
 		  q.contains(p.id.replaceAll('_', ' '))) {
 		return p;
 	  }
 	}
+
+	final aliasToScientific = <String, String>{
+	  'tomato': 'solanum lycopersicum',
+	  'apple': 'malus domestica',
+	  'potato': 'solanum tuberosum',
+	  'corn': 'zea mays',
+	  'wheat': 'triticum aestivum',
+	};
+
+	for (final entry in aliasToScientific.entries) {
+	  if (q.contains(entry.key) || q.contains(entry.value)) {
+		for (final p in plants) {
+		  final sci = p.scientificName.toLowerCase();
+		  final name = p.name.toLowerCase();
+		  if (sci.contains(entry.value) || name.contains(entry.key)) {
+			return p;
+		  }
+		}
+	  }
+	}
+
 	for (final p in plants) {
 	  for (final tag in p.tags) {
 		if (q.contains(tag)) return p;
@@ -365,7 +387,25 @@ class OfflineAiService {
 	  buf.writeln('- Ask about compost, mulching, pruning, rotation, or seed starting.');
 	}
 
+	final practical = _cropGuide(q);
+	if (practical.isNotEmpty) {
+	  buf.writeln('\n$practical');
+	}
+
 	return buf.toString();
+  }
+
+  String _cropGuide(String q) {
+	if (q.contains('tomato')) {
+	  return 'Tomato quick plan: start or transplant after frost, full sun, rich composted soil, deep watering, and stake/cage early.';
+	}
+	if (q.contains('apple')) {
+	  return 'Apple quick plan: full sun, chill-hour matched cultivar, annual structural pruning, and compatible pollinator variety nearby.';
+	}
+	if (q.contains('pepper') || q.contains('cucumber')) {
+	  return 'Warm-season crop plan: wait for warm soil, space correctly, keep even moisture, and feed during flowering/fruiting.';
+	}
+	return '';
   }
 
   String _fallback(String userQuery) {

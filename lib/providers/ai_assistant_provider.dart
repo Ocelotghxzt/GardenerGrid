@@ -60,6 +60,13 @@ class AiAssistantProvider extends ChangeNotifier {
 	notifyListeners();
   }
 
+
+		  bool _looksLowValueOnlineAnswer(String response) {
+			final r = response.toLowerCase();
+			return r.contains('try a more specific question') ||
+				r.contains('could not find enough online context') ||
+				r.contains('no matching entries found');
+		  }
   void setOnlineMode(bool enabled) {
 	_preferOnline = enabled;
 	notifyListeners();
@@ -100,6 +107,9 @@ class AiAssistantProvider extends ChangeNotifier {
 
 		if (_looksLikeConnectivityFailure(response)) {
 		  response = _offlineFallbackResponse(message, soilContext: soilContext);
+		} else if (_looksLowValueOnlineAnswer(response)) {
+		  final offline = _offlineFallbackResponse(message, soilContext: soilContext);
+		  response = '$response\n\n---\n\n## Offline Knowledge Base\n$offline';
 		}
 	  } else {
 		response = _offlineFallbackResponse(message, soilContext: soilContext);
@@ -135,7 +145,7 @@ class AiAssistantProvider extends ChangeNotifier {
   String _offlineFallbackResponse(String message, {SoilSample? soilContext}) {
 	final offline = _offlineService;
 	if (offline == null) {
-	  return 'Offline knowledge is still loading.';
+	  return 'Offline knowledge is initializing.\n\nQuick guidance:\n- Start with crop + goal (for example: "tomatoes spacing and watering").\n- Include your region/climate for better recommendations.\n- I will use full local encyclopedia data as soon as loading completes.';
 	}
 
 	final note = _preferOnline && !_hasConnection

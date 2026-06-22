@@ -18,6 +18,7 @@ class EncyclopediaProvider extends ChangeNotifier {
 	bool _onlineLoading = false;
   String? _error;
 	String? _onlineError;
+	int _onlineSearchNonce = 0;
 
   EncyclopediaProvider(this._localStorage);
 
@@ -95,8 +96,23 @@ class EncyclopediaProvider extends ChangeNotifier {
   List<PlantEntry> searchPlants(String query) {
 	if (query.trim().isEmpty) return _plants;
 	final q = query.toLowerCase();
+	final tokens = q
+		.split(RegExp(r'[^a-z0-9]+'))
+		.where((t) => t.isNotEmpty)
+		.toList();
 	return _plants.where((plant) {
-	  return plant.name.toLowerCase().contains(q) ||
+	  final bag = [
+		plant.name,
+		plant.scientificName,
+		plant.category,
+		plant.family,
+		plant.description,
+		plant.tags.join(' '),
+	  ].join(' ').toLowerCase();
+
+	  if (bag.contains(q)) return true;
+	  return tokens.every(bag.contains) ||
+		  plant.name.toLowerCase().contains(q) ||
 		  plant.scientificName.toLowerCase().contains(q) ||
 		  plant.category.toLowerCase().contains(q) ||
 		  plant.tags.any((tag) => tag.toLowerCase().contains(q));
@@ -152,6 +168,7 @@ class EncyclopediaProvider extends ChangeNotifier {
 
 	Future<void> searchPlantsOnline(String query, {String? countryCode}) async {
 	final q = query.trim();
+	final requestId = ++_onlineSearchNonce;
 	if (q.length < 2) {
 	  _onlinePlantResults = [];
 	  _onlineError = null;
@@ -165,6 +182,7 @@ class EncyclopediaProvider extends ChangeNotifier {
 
 	try {
 	  final cached = await _localStorage.searchOnlineEncyclopediaCache(q);
+	  if (requestId != _onlineSearchNonce) return;
 	  if (cached.isNotEmpty) {
 		_onlinePlantResults = cached;
 	  }
@@ -174,10 +192,14 @@ class EncyclopediaProvider extends ChangeNotifier {
 	notifyListeners();
 
 	try {
-	  final remote = await _onlineSearchService.search(
+	  final remote = await _onlineSearchService
+		  .search(
 		q,
 		countryCode: countryCode,
-	  );
+	  )
+		  .timeout(const Duration(seconds: 20));
+
+	  if (requestId != _onlineSearchNonce) return;
 
 	  if (remote.isNotEmpty) {
 		final merged = <String, OnlinePlantSearchResult>{};
@@ -185,7 +207,19 @@ class EncyclopediaProvider extends ChangeNotifier {
 		  merged['${item.source}|${item.id}'] = item;
 		}
 		for (final item in remote) {
-		  merged['${item.source}|${item.id}'] = item;
+		  final local = findLocalPlantMatch(
+			scientificName: item.scientificName,
+			commonName: item.name,
+		  );
+		  final normalized = local == null
+			  ? item
+			  : item.copyWith(
+				  name: local.name,
+				  scientificName: local.scientificName,
+				  family: local.family,
+				  snippet: item.snippet ?? local.description,
+			  );
+		  merged['${normalized.source}|${normalized.id}'] = normalized;
 		}
 		_onlinePlantResults = merged.values.toList()
 		  ..sort((a, b) => b.confidence.compareTo(a.confidence));
@@ -198,6 +232,7 @@ class EncyclopediaProvider extends ChangeNotifier {
 		_onlineError = 'No matching entries found in open encyclopedia sources.';
 	  }
 	} catch (_) {
+	  if (requestId != _onlineSearchNonce) return;
 	  if (_onlinePlantResults.isEmpty) {
 		_onlineError = 'Online search unavailable.';
 	  }

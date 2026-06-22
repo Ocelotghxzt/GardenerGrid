@@ -259,11 +259,11 @@ class _OnlineResultTile extends StatelessWidget {
 	  leading: result.imageUrl != null
 		  ? CircleAvatar(backgroundImage: NetworkImage(result.imageUrl!))
 		  : const CircleAvatar(child: Icon(Icons.travel_explore)),
-	  title: Text(result.name),
+	  title: Text(local?.name ?? result.name),
 	  subtitle: Column(
 		crossAxisAlignment: CrossAxisAlignment.start,
 		children: [
-		  Text('${result.scientificName} • ${result.source}'),
+		  Text('${local?.scientificName ?? result.scientificName} • ${result.source}'),
 		  const SizedBox(height: 4),
 		  Wrap(
 			spacing: 6,

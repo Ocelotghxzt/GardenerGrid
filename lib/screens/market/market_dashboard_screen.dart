@@ -15,6 +15,7 @@ class MarketDashboardScreen extends StatefulWidget {
 
 class _MarketDashboardScreenState extends State<MarketDashboardScreen> {
   final _searchCtrl = TextEditingController();
+  final Set<String> _requestedCrops = <String>{};
   String _searchQuery = '';
 
   // Default popular crops to show market data for
@@ -29,10 +30,17 @@ class _MarketDashboardScreenState extends State<MarketDashboardScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final market = context.read<MarketProvider>();
       for (final crop in _popularCrops) {
+        _requestedCrops.add(crop.toLowerCase());
         market.fetchPrices(crop);
         market.fetchCommunityPrices(crop);
       }
     });
+  }
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
   }
 
   @override
@@ -43,6 +51,12 @@ class _MarketDashboardScreenState extends State<MarketDashboardScreen> {
 
     final displayCrops = [..._popularCrops, ...myCrops.where(
       (c) => !_popularCrops.contains(c))];
+
+    final queryCrop = _searchQuery.trim();
+    if (queryCrop.isNotEmpty &&
+        !displayCrops.any((c) => c.toLowerCase() == queryCrop.toLowerCase())) {
+      displayCrops.insert(0, _normalizeCropLabel(queryCrop));
+    }
 
     final filtered = _searchQuery.isEmpty
         ? displayCrops
@@ -123,6 +137,7 @@ class _MarketDashboardScreenState extends State<MarketDashboardScreen> {
                     itemCount: filtered.length,
                     itemBuilder: (ctx, i) {
                       final crop = filtered[i];
+                      _ensureCropLoaded(crop, market);
                       final prices = market.pricesFor(crop);
                       final communityPrices = market.communityPricesFor(crop);
                       return _MarketCropTile(
@@ -252,6 +267,27 @@ class _MarketCropTile extends StatelessWidget {
 }
 
 extension on _MarketDashboardScreenState {
+  void _ensureCropLoaded(String crop, MarketProvider market) {
+    final key = crop.toLowerCase();
+    if (_requestedCrops.contains(key)) return;
+    _requestedCrops.add(key);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      market.fetchPrices(crop);
+      market.fetchCommunityPrices(crop);
+    });
+  }
+
+  String _normalizeCropLabel(String input) {
+    final trimmed = input.trim();
+    if (trimmed.isEmpty) return trimmed;
+    return trimmed
+        .split(RegExp(r'\s+'))
+        .map((word) =>
+            word.isEmpty ? word : '${word[0].toUpperCase()}${word.substring(1).toLowerCase()}')
+        .join(' ');
+  }
+
   void _showSharePriceSheet(BuildContext context, String cropName) {
     final auth = context.read<AuthProvider>();
     final marketNameCtrl = TextEditingController();

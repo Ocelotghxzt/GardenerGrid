@@ -160,7 +160,7 @@ class _SoilInputScreenState extends State<SoilInputScreen>
                   _buildField('Electrical Conductivity', _ec, suffix: 'mS/cm', optional: true),
                   _buildField('Organic Matter', _organicMatter, suffix: '%', optional: true),
                   DropdownButtonFormField<String>(
-                    value: _texture,
+                    initialValue: _texture,
                     decoration: const InputDecoration(
                       labelText: 'Soil Texture (optional)',
                       hintText: 'Leave empty if unknown',

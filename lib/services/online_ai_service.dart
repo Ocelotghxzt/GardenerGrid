@@ -36,9 +36,18 @@ class OnlineAiService {
 	  final wikiSummaries = await _wikipediaTopSummaries(query, limit: 2);
 	  final ddg = await _duckDuckGoSnippets(query);
 	  final communityTips = await _stackExchangeTips(query, limit: 2);
+	  final conciseAnswer = _conciseSourcedAnswer(
+		userMessage,
+		ddg: ddg,
+		wikiSummaries: wikiSummaries,
+	  );
 
 	  final sb = StringBuffer();
 	  sb.writeln('## Online Answer (Free Sources)');
+	  if (conciseAnswer != null) {
+		sb.writeln('**Straight answer:** $conciseAnswer');
+		sb.writeln();
+	  }
 
 	  if (ddg.heading != null && ddg.heading!.isNotEmpty) {
 		sb.writeln('**Topic:** ${ddg.heading}');
@@ -124,6 +133,7 @@ class OnlineAiService {
 
   Future<List<_WikipediaSnippet>> _wikipediaTopSummaries(String query, {int limit = 2}) async {
 	try {
+	  final queryTokens = _tokens(query);
 	  final searchUri = Uri.parse(
 		'https://en.wikipedia.org/w/api.php'
 		'?action=query&list=search&format=json&utf8=1&srlimit=${limit * 2}&srsearch=${Uri.encodeQueryComponent(query)}',
@@ -144,12 +154,86 @@ class OnlineAiService {
 		if (title.isEmpty) continue;
 		final summary = await _wikipediaSummary(title);
 		if (summary == null || summary.isEmpty) continue;
-		out.add(_WikipediaSnippet(title: title, summary: summary));
+		final relevance = _textRelevanceScore(queryTokens, '$title $summary');
+		if (relevance < 0.18) continue;
+		out.add(_WikipediaSnippet(title: title, summary: summary, relevance: relevance));
 	  }
+	  out.sort((a, b) => b.relevance.compareTo(a.relevance));
 	  return out;
 	} catch (_) {
 	  return const <_WikipediaSnippet>[];
 	}
+  }
+
+  String? _conciseSourcedAnswer(
+	String userMessage, {
+	required _DdgResult ddg,
+	required List<_WikipediaSnippet> wikiSummaries,
+  }) {
+	if (!_isFactQuestion(userMessage)) return null;
+	final candidates = <String>[];
+	if (ddg.primarySnippet != null && ddg.primarySnippet!.isNotEmpty) {
+	  candidates.add(ddg.primarySnippet!);
+	}
+	for (final wiki in wikiSummaries) {
+	  candidates.add(wiki.summary);
+	}
+	for (final candidate in candidates) {
+	  final line = _firstSentence(candidate);
+	  if (line == null || line.isEmpty) continue;
+	  if (_isLikelyUsableFact(userMessage, line)) {
+		return line;
+	  }
+	}
+	return null;
+  }
+
+  bool _isFactQuestion(String query) {
+	final q = query.toLowerCase();
+	return q.startsWith('what ') ||
+		q.startsWith('who ') ||
+		q.startsWith('when ') ||
+		q.startsWith('where ') ||
+		q.startsWith('how many ') ||
+		q.startsWith('how much ') ||
+		q.startsWith('is ') ||
+		q.startsWith('are ');
+  }
+
+  bool _isLikelyUsableFact(String query, String line) {
+	final q = query.toLowerCase();
+	final candidate = line.toLowerCase();
+	final tokens = _tokens(q);
+	final relevance = _textRelevanceScore(tokens, candidate);
+	if (q.contains('how many') || q.contains('how much')) {
+	  return relevance >= 0.18 && RegExp(r'\d').hasMatch(candidate);
+	}
+	return relevance >= 0.22;
+  }
+
+  String? _firstSentence(String text) {
+	final cleaned = text.replaceAll(RegExp(r'\s+'), ' ').trim();
+	if (cleaned.isEmpty) return null;
+	final match = RegExp(r'^.+?[.!?](?:\s|$)').firstMatch(cleaned);
+	return (match?.group(0) ?? cleaned).trim();
+  }
+
+  Set<String> _tokens(String text) {
+	return text
+		.toLowerCase()
+		.split(RegExp(r'[^a-z0-9]+'))
+		.where((t) => t.length > 2)
+		.toSet();
+  }
+
+  double _textRelevanceScore(Set<String> queryTokens, String text) {
+	if (queryTokens.isEmpty) return 0;
+	final haystack = text.toLowerCase();
+	var hits = 0;
+	for (final token in queryTokens) {
+	  if (haystack.contains(token)) hits += 1;
+	}
+	return hits / queryTokens.length;
   }
 
   Future<_DdgResult> _duckDuckGoSnippets(String query) async {
@@ -303,8 +387,13 @@ class OnlineAiService {
 class _WikipediaSnippet {
 	final String title;
 	final String summary;
+	final double relevance;
 
-	const _WikipediaSnippet({required this.title, required this.summary});
+	const _WikipediaSnippet({
+	  required this.title,
+	  required this.summary,
+	  required this.relevance,
+	});
 }
 
 class _DdgResult {

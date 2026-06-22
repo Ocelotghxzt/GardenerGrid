@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 import '../../models/plant_entry.dart';
 import '../../providers/encyclopedia_provider.dart';
 import '../../providers/soil_provider.dart';
+import '../../services/almanac_api_service.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/empty_state.dart';
 
@@ -20,12 +21,16 @@ class LibraryModeScreen extends StatefulWidget {
 class _LibraryModeScreenState extends State<LibraryModeScreen> {
   final _searchCtrl = TextEditingController();
   final _locationCtrl = TextEditingController();
-  Timer? _debounce;
+  final AlmanacApiService _almanacApi = AlmanacApiService();
+  Timer? _searchDebounce;
+  Timer? _locationDebounce;
 
   String _query = '';
   bool _medicinalOnly = false;
   int? _zone;
   String? _countryCode;
+  String? _zoneBasis;
+  bool _resolvingLocation = false;
   final Set<String> _sources = <String>{
     'GBIF',
     'iNaturalist',
@@ -46,7 +51,8 @@ class _LibraryModeScreenState extends State<LibraryModeScreen> {
 
   @override
   void dispose() {
-    _debounce?.cancel();
+    _searchDebounce?.cancel();
+    _locationDebounce?.cancel();
     _searchCtrl.dispose();
     _locationCtrl.dispose();
     super.dispose();
@@ -101,6 +107,7 @@ class _LibraryModeScreenState extends State<LibraryModeScreen> {
                     onChanged: (value) {
                       setState(() {});
                       _triggerOnlineSearch();
+                      _scheduleLocationResolution();
                     },
                   ),
                 ),
@@ -130,6 +137,22 @@ class _LibraryModeScreenState extends State<LibraryModeScreen> {
               ],
             ),
           ),
+          if (_resolvingLocation)
+            const Padding(
+              padding: EdgeInsets.fromLTRB(16, 0, 16, 8),
+              child: LinearProgressIndicator(minHeight: 2),
+            )
+          else if (_zoneBasis != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  _zoneBasis!,
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ),
+            ),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
             child: Row(
@@ -332,14 +355,26 @@ class _LibraryModeScreenState extends State<LibraryModeScreen> {
   }
 
   void _triggerOnlineSearch() {
-    _debounce?.cancel();
-    _debounce = Timer(const Duration(milliseconds: 450), () {
+    _searchDebounce?.cancel();
+    _searchDebounce = Timer(const Duration(milliseconds: 450), () {
       if (!mounted) return;
       context.read<EncyclopediaProvider>().searchPlantsOnline(
             _query,
             countryCode: _effectiveCountryCode,
           );
     });
+  }
+
+  void _scheduleLocationResolution() {
+	final raw = _locationCtrl.text.trim();
+	if (raw.length < 3) {
+	  setState(() => _zoneBasis = null);
+	  return;
+	}
+	_locationDebounce?.cancel();
+	_locationDebounce = Timer(const Duration(milliseconds: 650), () {
+	  _resolveTypedLocation(raw);
+	});
   }
 
   String? get _effectiveCountryCode {
@@ -379,6 +414,11 @@ class _LibraryModeScreenState extends State<LibraryModeScreen> {
       _locationCtrl.text = labelParts.join(', ');
     }
     });
+    await _estimateZoneFromCoordinates(
+      latitude: pos.latitude,
+      longitude: pos.longitude,
+      labelOverride: labelParts.isNotEmpty ? labelParts.join(', ') : null,
+    );
     _triggerOnlineSearch();
   } catch (_) {
     if (!silent && mounted) {
@@ -387,6 +427,55 @@ class _LibraryModeScreenState extends State<LibraryModeScreen> {
     );
     }
   }
+  }
+
+  Future<void> _resolveTypedLocation(String raw) async {
+  setState(() {
+    _resolvingLocation = true;
+    _zoneBasis = null;
+  });
+  final resolved = await _almanacApi.resolveLocation(raw);
+  if (!mounted) return;
+  if (resolved == null) {
+    setState(() => _resolvingLocation = false);
+    return;
+  }
+
+  setState(() {
+    _countryCode = resolved.countryCode;
+    _locationCtrl.value = TextEditingValue(
+    text: resolved.displayName,
+    selection: TextSelection.collapsed(offset: resolved.displayName.length),
+    );
+  });
+  await _estimateZoneFromCoordinates(
+    latitude: resolved.latitude,
+    longitude: resolved.longitude,
+    labelOverride: resolved.displayName,
+  );
+  _triggerOnlineSearch();
+  }
+
+  Future<void> _estimateZoneFromCoordinates({
+  required double latitude,
+  required double longitude,
+  String? labelOverride,
+  }) async {
+  final estimate = await _almanacApi.estimateHardinessZone(
+    latitude: latitude,
+    longitude: longitude,
+  );
+  if (!mounted) return;
+  setState(() {
+    _resolvingLocation = false;
+    if (estimate != null) {
+    _zone = estimate.zone;
+    final place = labelOverride ?? _locationCtrl.text.trim();
+    _zoneBasis = '$place: suggested Zone ${estimate.zone} from open climate data. Avg annual extreme min ${estimate.averageAnnualExtremeMinC.toStringAsFixed(1)} C.';
+    } else {
+    _zoneBasis = null;
+    }
+  });
   }
 
   void _showPlantDetailSheet({
@@ -590,6 +679,7 @@ class _LibraryModeScreenState extends State<LibraryModeScreen> {
       _medicinalOnly = false;
       _zone = null;
       _countryCode = null;
+      _zoneBasis = null;
       _sources
         ..clear()
         ..addAll(const {

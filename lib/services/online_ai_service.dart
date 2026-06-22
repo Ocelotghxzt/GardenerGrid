@@ -65,7 +65,7 @@ class OnlineAiService {
 	  if (wikidataFacts.isNotEmpty) {
 		sb.writeln('**Structured facts:**');
 		for (final fact in wikidataFacts) {
-		  sb.writeln('- **${fact.title}:** ${fact.summary}');
+		  sb.writeln('- **${fact.title}** (${_factConfidenceTag(fact.relevance)}): ${fact.summary}');
 		}
 		sb.writeln();
 	  }
@@ -73,7 +73,7 @@ class OnlineAiService {
 	  if (wikiSummaries.isNotEmpty) {
 		sb.writeln('**Reference summary:**');
 		for (final w in wikiSummaries) {
-		  sb.writeln('- **${w.title}:** ${w.summary}');
+		  sb.writeln('- **${w.title}** (${_factConfidenceTag(w.relevance)}): ${w.summary}');
 		}
 		sb.writeln();
 	  }
@@ -81,7 +81,7 @@ class OnlineAiService {
 	  if (communityTips.isNotEmpty) {
 		sb.writeln('**Community-tested answers:**');
 		for (final tip in communityTips) {
-		  sb.writeln('- **${tip.title}** (${tip.site})');
+		  sb.writeln('- **${tip.title}** (${tip.site}, ${tip.confidenceTag})');
 		  if (tip.excerpt.isNotEmpty) {
 			sb.writeln('  ${tip.excerpt}');
 		  }
@@ -118,21 +118,21 @@ class OnlineAiService {
 
 	  final citations = <String>{};
 	  if (ddg.abstractUrl != null && ddg.abstractUrl!.isNotEmpty) {
-		citations.add('DuckDuckGo Instant Answer: ${ddg.abstractUrl}');
+		citations.add('DuckDuckGo Instant Answer [Medium]: ${ddg.abstractUrl}');
 	  }
 	  for (final fact in wikidataFacts) {
 		if (fact.url.isNotEmpty) {
-		  citations.add('Wikidata (${fact.title}): ${fact.url}');
+		  citations.add('Wikidata (${fact.title}) [${_factConfidenceLabel(fact.relevance)}]: ${fact.url}');
 		}
 	  }
 	  for (final wiki in wikiSummaries) {
 		if (wiki.url.isNotEmpty) {
-		  citations.add('Wikipedia (${wiki.title}): ${wiki.url}');
+		  citations.add('Wikipedia (${wiki.title}) [${_factConfidenceLabel(wiki.relevance)}]: ${wiki.url}');
 		}
 	  }
 	  for (final tip in communityTips) {
 		if (tip.link.isNotEmpty) {
-		  citations.add('Stack Exchange (${tip.site}): ${tip.link}');
+		  citations.add('Stack Exchange (${tip.site}) [${tip.confidenceLabel}]: ${tip.link}');
 		}
 	  }
 	  if (citations.isNotEmpty) {
@@ -154,9 +154,17 @@ class OnlineAiService {
 	final q = query.toLowerCase();
 	final asksCount = q.contains('how many') || q.contains('number of');
 	if (asksCount && q.contains('tomato') && q.contains('seed')) {
-	  return '## Straight answer\nA typical tomato usually has **around 100 to 300 seeds**.\n\nSmaller tomatoes often land near the low end, while larger slicing tomatoes can carry several hundred seeds depending on variety and fruit size.\n\n**Sources used:**\n- Wikipedia: https://en.wikipedia.org/wiki/Tomato\n- Wikidata: https://www.wikidata.org/wiki/Q23501';
+	  return '## Straight answer\nA typical tomato usually has **around 100 to 300 seeds**.\n\nSmaller tomatoes often land near the low end, while larger slicing tomatoes can carry several hundred seeds depending on variety and fruit size.\n\n**Sources used:**\n- Wikipedia [High]: https://en.wikipedia.org/wiki/Tomato\n- Wikidata [High]: https://www.wikidata.org/wiki/Q23501';
 	}
 	return null;
+  }
+
+  String _factConfidenceTag(double relevance) => '[${_factConfidenceLabel(relevance)}]';
+
+  String _factConfidenceLabel(double relevance) {
+	if (relevance >= 0.55) return 'High';
+	if (relevance >= 0.35) return 'Medium';
+	return 'Low';
   }
 
   String _composeEffectiveQuery(List<Map<String, String>> history, String userMessage) {
@@ -387,7 +395,13 @@ class OnlineAiService {
 			}
 		  }
 		  if (title.isEmpty || link.isEmpty || excerpt.isEmpty) continue;
-		  out.add(_CommunityTip(title: title, link: link, excerpt: _truncate(excerpt, 280), site: site));
+		  out.add(_CommunityTip(
+			title: title,
+			link: link,
+			excerpt: _truncate(excerpt, 280),
+			site: site,
+			confidenceLabel: acceptedId != null ? 'High' : 'Medium',
+		  ));
 		}
 	  }
 	  return out;
@@ -556,11 +570,15 @@ class _CommunityTip {
 	final String link;
 	final String excerpt;
 	final String site;
+	final String confidenceLabel;
+
+	String get confidenceTag => '[$confidenceLabel]';
 
 	const _CommunityTip({
 	  required this.title,
 	  required this.link,
 	  required this.excerpt,
 	  required this.site,
+	  required this.confidenceLabel,
 	});
 }

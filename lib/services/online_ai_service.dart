@@ -14,58 +14,60 @@ class OnlineAiService {
 	required String userMessage,
 	SoilSample? soilContext,
   }) async {
-	// History remains part of the interface for compatibility with callers.
-	if (history.isNotEmpty) {
-	  // Intentionally no-op: free-source mode does not require full chat payloads.
-	}
-	return _chatWithFreeSources(userMessage, soilContext: soilContext);
+	final effectiveQuery = _composeEffectiveQuery(history, userMessage);
+	return _chatWithFreeSources(
+	  userMessage,
+	  effectiveQuery: effectiveQuery,
+	  soilContext: soilContext,
+	);
   }
 
   Future<String> _chatWithFreeSources(
 	String userMessage, {
+	String? effectiveQuery,
 	SoilSample? soilContext,
   }) async {
 	try {
-	  final searchTitle = await _wikipediaSearchTopTitle(userMessage);
-	  final wikiTitle = searchTitle ?? userMessage;
-	  final wikiText = await _wikipediaSummary(wikiTitle);
-
-	  final ddgUri = Uri.parse(
-		'https://api.duckduckgo.com/?q=${Uri.encodeQueryComponent(userMessage)}&format=json&no_html=1&no_redirect=1',
-	  );
-	  final ddgResponse = await http.get(ddgUri).timeout(const Duration(seconds: 14));
-
-	  String? heading;
-	  String? abstractText;
-	  String? abstractUrl;
-
-	  if (ddgResponse.statusCode == 200) {
-		final data = jsonDecode(ddgResponse.body) as Map<String, dynamic>;
-		heading = (data['Heading'] ?? '').toString().trim();
-		abstractText = (data['AbstractText'] ?? '').toString().trim();
-		abstractUrl = (data['AbstractURL'] ?? '').toString().trim();
-	  }
+	  final query = effectiveQuery ?? userMessage;
+	  final wikiSummaries = await _wikipediaTopSummaries(query, limit: 2);
+	  final ddg = await _duckDuckGoSnippets(query);
+	  final communityTips = await _stackExchangeTips(query, limit: 2);
 
 	  final sb = StringBuffer();
 	  sb.writeln('## Online Answer (Free Sources)');
-	  if (heading != null && heading.isNotEmpty) {
-		sb.writeln('**Topic:** $heading');
+
+	  if (ddg.heading != null && ddg.heading!.isNotEmpty) {
+		sb.writeln('**Topic:** ${ddg.heading}');
 		sb.writeln();
 	  }
 
-	  if (abstractText != null && abstractText.isNotEmpty) {
-		sb.writeln(abstractText);
+	  if (ddg.primarySnippet != null && ddg.primarySnippet!.isNotEmpty) {
+		sb.writeln(ddg.primarySnippet!);
 		sb.writeln();
 	  }
 
-	  if (wikiText != null && wikiText.isNotEmpty) {
+	  if (wikiSummaries.isNotEmpty) {
 		sb.writeln('**Reference summary:**');
-		sb.writeln(wikiText);
+		for (final w in wikiSummaries) {
+		  sb.writeln('- **${w.title}:** ${w.summary}');
+		}
 		sb.writeln();
 	  }
 
-	  if ((abstractText == null || abstractText.isEmpty) &&
-		  (wikiText == null || wikiText.isEmpty)) {
+	  if (communityTips.isNotEmpty) {
+		sb.writeln('**Community-tested discussions:**');
+		for (final tip in communityTips) {
+		  sb.writeln('- ${tip.title}');
+		  sb.writeln('  ${tip.link}');
+		}
+		sb.writeln();
+	  }
+
+	  final hasOnlineContext = (ddg.primarySnippet != null && ddg.primarySnippet!.isNotEmpty) ||
+		  wikiSummaries.isNotEmpty ||
+		  communityTips.isNotEmpty;
+
+	  if (!hasOnlineContext) {
 		sb.writeln(_quickGuide(userMessage));
 		sb.writeln();
 	  } else {
@@ -81,9 +83,9 @@ class OnlineAiService {
 			'K ${soilContext.potassium.toStringAsFixed(0)}.');
 	  }
 
-	  if (abstractUrl != null && abstractUrl.isNotEmpty) {
+	  if (ddg.abstractUrl != null && ddg.abstractUrl!.isNotEmpty) {
 		sb.writeln();
-		sb.writeln('Source: $abstractUrl');
+		sb.writeln('Source: ${ddg.abstractUrl}');
 	  }
 
 	  sb.writeln('\n_No sign-in or paid key required for this mode._');
@@ -93,22 +95,118 @@ class OnlineAiService {
 	}
   }
 
-  Future<String?> _wikipediaSearchTopTitle(String query) async {
+  String _composeEffectiveQuery(List<Map<String, String>> history, String userMessage) {
+	if (history.isEmpty) return userMessage;
+	final priorUsers = history
+		.where((m) => (m['role'] ?? '').toLowerCase() == 'user')
+		.map((m) => (m['content'] ?? '').trim())
+		.where((m) => m.isNotEmpty)
+		.toList();
+	if (priorUsers.isEmpty) return userMessage;
+	final prior = priorUsers.length > 2
+		? priorUsers.sublist(priorUsers.length - 2)
+		: priorUsers;
+	return '${prior.join(' ; ')} ; $userMessage';
+  }
+
+  Future<List<_WikipediaSnippet>> _wikipediaTopSummaries(String query, {int limit = 2}) async {
 	try {
-	  final uri = Uri.parse(
+	  final searchUri = Uri.parse(
 		'https://en.wikipedia.org/w/api.php'
-		'?action=query&list=search&format=json&utf8=1&srlimit=1&srsearch=${Uri.encodeQueryComponent(query)}',
+		'?action=query&list=search&format=json&utf8=1&srlimit=${limit * 2}&srsearch=${Uri.encodeQueryComponent(query)}',
 	  );
-	  final response = await http.get(uri).timeout(const Duration(seconds: 10));
-	  if (response.statusCode != 200) return null;
-	  final data = jsonDecode(response.body) as Map<String, dynamic>;
+	  final searchRes = await http.get(searchUri).timeout(const Duration(seconds: 10));
+	  if (searchRes.statusCode != 200) return const <_WikipediaSnippet>[];
+
+	  final data = jsonDecode(searchRes.body) as Map<String, dynamic>;
 	  final q = data['query'] as Map<String, dynamic>?;
 	  final rows = (q?['search'] as List?)?.cast<Map<String, dynamic>>() ??
 		  const <Map<String, dynamic>>[];
-	  if (rows.isEmpty) return null;
-	  return (rows.first['title'] ?? '').toString().trim();
+	  if (rows.isEmpty) return const <_WikipediaSnippet>[];
+
+	  final out = <_WikipediaSnippet>[];
+	  for (final row in rows) {
+		if (out.length >= limit) break;
+		final title = (row['title'] ?? '').toString().trim();
+		if (title.isEmpty) continue;
+		final summary = await _wikipediaSummary(title);
+		if (summary == null || summary.isEmpty) continue;
+		out.add(_WikipediaSnippet(title: title, summary: summary));
+	  }
+	  return out;
 	} catch (_) {
-	  return null;
+	  return const <_WikipediaSnippet>[];
+	}
+  }
+
+  Future<_DdgResult> _duckDuckGoSnippets(String query) async {
+	try {
+	  final ddgUri = Uri.parse(
+		'https://api.duckduckgo.com/?q=${Uri.encodeQueryComponent(query)}&format=json&no_html=1&no_redirect=1',
+	  );
+	  final response = await http.get(ddgUri).timeout(const Duration(seconds: 14));
+	  if (response.statusCode != 200) return const _DdgResult();
+
+	  final data = jsonDecode(response.body) as Map<String, dynamic>;
+	  final heading = (data['Heading'] ?? '').toString().trim();
+	  final abstractText = (data['AbstractText'] ?? '').toString().trim();
+	  final abstractUrl = (data['AbstractURL'] ?? '').toString().trim();
+
+	  String? relatedSnippet;
+	  final related = (data['RelatedTopics'] as List?)?.cast<dynamic>() ?? const <dynamic>[];
+	  if (abstractText.isEmpty && related.isNotEmpty) {
+		relatedSnippet = _extractRelatedTopicText(related);
+	  }
+
+	  return _DdgResult(
+		heading: heading.isEmpty ? null : heading,
+		primarySnippet: abstractText.isNotEmpty ? abstractText : relatedSnippet,
+		abstractUrl: abstractUrl.isEmpty ? null : abstractUrl,
+	  );
+	} catch (_) {
+	  return const _DdgResult();
+	}
+  }
+
+  String? _extractRelatedTopicText(List<dynamic> topics) {
+	for (final item in topics) {
+	  if (item is! Map<String, dynamic>) continue;
+	  final text = (item['Text'] ?? '').toString().trim();
+	  if (text.isNotEmpty) return text;
+	  final nested = item['Topics'];
+	  if (nested is List) {
+		final nestedText = _extractRelatedTopicText(nested.cast<dynamic>());
+		if (nestedText != null && nestedText.isNotEmpty) return nestedText;
+	  }
+	}
+	return null;
+  }
+
+  Future<List<_CommunityTip>> _stackExchangeTips(String query, {int limit = 2}) async {
+	try {
+	  final uri = Uri.parse(
+		'https://api.stackexchange.com/2.3/search/advanced'
+		'?order=desc&sort=relevance&site=gardening&q=${Uri.encodeQueryComponent(query)}&pagesize=${limit * 2}',
+	  );
+	  final res = await http.get(uri).timeout(const Duration(seconds: 10));
+	  if (res.statusCode != 200) return const <_CommunityTip>[];
+
+	  final data = jsonDecode(res.body) as Map<String, dynamic>;
+	  final items = (data['items'] as List?)?.cast<Map<String, dynamic>>() ??
+		  const <Map<String, dynamic>>[];
+	  if (items.isEmpty) return const <_CommunityTip>[];
+
+	  final out = <_CommunityTip>[];
+	  for (final item in items) {
+		if (out.length >= limit) break;
+		final title = (item['title'] ?? '').toString().trim();
+		final link = (item['link'] ?? '').toString().trim();
+		if (title.isEmpty || link.isEmpty) continue;
+		out.add(_CommunityTip(title: title, link: link));
+	  }
+	  return out;
+	} catch (_) {
+	  return const <_CommunityTip>[];
 	}
   }
 
@@ -187,4 +285,26 @@ class OnlineAiService {
 	  return null;
 	}
   }
+}
+
+class _WikipediaSnippet {
+	final String title;
+	final String summary;
+
+	const _WikipediaSnippet({required this.title, required this.summary});
+}
+
+class _DdgResult {
+	final String? heading;
+	final String? primarySnippet;
+	final String? abstractUrl;
+
+	const _DdgResult({this.heading, this.primarySnippet, this.abstractUrl});
+}
+
+class _CommunityTip {
+	final String title;
+	final String link;
+
+	const _CommunityTip({required this.title, required this.link});
 }

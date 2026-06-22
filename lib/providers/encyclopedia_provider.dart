@@ -51,32 +51,15 @@ class EncyclopediaProvider extends ChangeNotifier {
 		  !shouldUpgradeToLargeDataset) {
 		_plants = await _localStorage.searchPlants('');
 		_foragingEntries = await _localStorage.searchForaging('');
+
+		if (_plants.isEmpty || _foragingEntries.isEmpty) {
+		  await _loadBundledDataAndCache();
+		}
 	  } else {
 		if (forceRefresh || shouldUpgradeToLargeDataset) {
 		  await _localStorage.clearEncyclopediaCache();
 		}
-
-		String plantsJson;
-		try {
-		  plantsJson = await rootBundle.loadString('assets/data/plants_10000.json');
-		} catch (_) {
-		  plantsJson = await rootBundle.loadString('assets/data/plants.json');
-		}
-		final foragingJson =
-			await rootBundle.loadString('assets/data/foraging.json');
-
-		final plantsData = jsonDecode(plantsJson) as List<dynamic>;
-		final foragingData = jsonDecode(foragingJson) as List<dynamic>;
-
-		_plants = plantsData
-			.map((item) => PlantEntry.fromJson(item as Map<String, dynamic>))
-			.toList();
-		_foragingEntries = foragingData
-			.map((item) => ForagingEntry.fromJson(item as Map<String, dynamic>))
-			.toList();
-
-		await _localStorage.cachePlants(_plants);
-		await _localStorage.cacheForaging(_foragingEntries);
+		await _loadBundledDataAndCache();
 	  }
 	} catch (e) {
 	  _error = 'Could not load offline encyclopedia.';
@@ -84,6 +67,29 @@ class EncyclopediaProvider extends ChangeNotifier {
 
 	_loading = false;
 	notifyListeners();
+  }
+
+  Future<void> _loadBundledDataAndCache() async {
+	String plantsJson;
+	try {
+	  plantsJson = await rootBundle.loadString('assets/data/plants_10000.json');
+	} catch (_) {
+	  plantsJson = await rootBundle.loadString('assets/data/plants.json');
+	}
+	final foragingJson = await rootBundle.loadString('assets/data/foraging.json');
+
+	final plantsData = jsonDecode(plantsJson) as List<dynamic>;
+	final foragingData = jsonDecode(foragingJson) as List<dynamic>;
+
+	_plants = plantsData
+		.map((item) => PlantEntry.fromJson(item as Map<String, dynamic>))
+		.toList();
+	_foragingEntries = foragingData
+		.map((item) => ForagingEntry.fromJson(item as Map<String, dynamic>))
+		.toList();
+
+	await _localStorage.cachePlants(_plants);
+	await _localStorage.cacheForaging(_foragingEntries);
   }
 
   List<PlantEntry> searchPlants(String query) {
@@ -156,15 +162,45 @@ class EncyclopediaProvider extends ChangeNotifier {
 
 	_onlineLoading = true;
 	_onlineError = null;
+
+	try {
+	  final cached = await _localStorage.searchOnlineEncyclopediaCache(q);
+	  if (cached.isNotEmpty) {
+		_onlinePlantResults = cached;
+	  }
+	} catch (_) {
+	  // Cache read failure should never block network fetch.
+	}
 	notifyListeners();
 
 	try {
-	  _onlinePlantResults = await _onlineSearchService.search(
+	  final remote = await _onlineSearchService.search(
 		q,
 		countryCode: countryCode,
 	  );
+
+	  if (remote.isNotEmpty) {
+		final merged = <String, OnlinePlantSearchResult>{};
+		for (final item in _onlinePlantResults) {
+		  merged['${item.source}|${item.id}'] = item;
+		}
+		for (final item in remote) {
+		  merged['${item.source}|${item.id}'] = item;
+		}
+		_onlinePlantResults = merged.values.toList()
+		  ..sort((a, b) => b.confidence.compareTo(a.confidence));
+
+		await _localStorage.cacheOnlineEncyclopediaResults(
+		  q,
+		  _onlinePlantResults,
+		);
+	  } else if (_onlinePlantResults.isEmpty) {
+		_onlineError = 'No matching entries found in open encyclopedia sources.';
+	  }
 	} catch (_) {
-	  _onlineError = 'Online search unavailable.';
+	  if (_onlinePlantResults.isEmpty) {
+		_onlineError = 'Online search unavailable.';
+	  }
 	}
 
 	_onlineLoading = false;

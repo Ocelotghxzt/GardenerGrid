@@ -22,6 +22,30 @@ class OnlinePlantSearchResult {
     this.confidence = 0.6,
   });
 
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'name': name,
+        'scientificName': scientificName,
+        'family': family,
+        'source': source,
+        'snippet': snippet,
+        'imageUrl': imageUrl,
+        'confidence': confidence,
+      };
+
+  factory OnlinePlantSearchResult.fromJson(Map<String, dynamic> json) {
+    return OnlinePlantSearchResult(
+      id: (json['id'] ?? '').toString(),
+      name: (json['name'] ?? 'Unknown').toString(),
+      scientificName: (json['scientificName'] ?? '').toString(),
+      family: (json['family'] ?? 'Unknown').toString(),
+      source: (json['source'] ?? 'Unknown').toString(),
+      snippet: json['snippet']?.toString(),
+      imageUrl: json['imageUrl']?.toString(),
+      confidence: (json['confidence'] as num?)?.toDouble() ?? 0.5,
+    );
+  }
+
   OnlinePlantSearchResult copyWith({double? confidence}) {
     return OnlinePlantSearchResult(
       id: id,
@@ -38,6 +62,15 @@ class OnlinePlantSearchResult {
 
 /// Live online search using open data sources and literal open search engines.
 class OnlinePlantSearchService {
+  static const Map<String, double> _sourceWeight = {
+    'GBIF': 0.86,
+    'iNaturalist': 0.84,
+    'OpenFarm': 0.78,
+    'Wikipedia Search': 0.64,
+    'Wikidata Search': 0.66,
+    'Openverse Search': 0.50,
+  };
+
   Future<List<OnlinePlantSearchResult>> search(
     String query, {
     String? countryCode,
@@ -45,16 +78,31 @@ class OnlinePlantSearchService {
     final q = query.trim();
     if (q.length < 2) return const [];
 
-    final results = <OnlinePlantSearchResult>[];
+    final variants = _buildQueryVariants(q).take(3).toList();
+    final allBatches = <List<OnlinePlantSearchResult>>[];
 
-    results.addAll(await _searchGbif(q));
-    results.addAll(await _searchINaturalist(q));
-    results.addAll(await _searchWikipedia(q));
-    results.addAll(await _searchOpenverse(q));
+    for (final variant in variants) {
+      final batches = await Future.wait<List<OnlinePlantSearchResult>>([
+        _withRetry(() => _searchGbif(variant)),
+        _withRetry(() => _searchINaturalist(variant)),
+        _withRetry(() => _searchOpenFarm(variant)),
+        _withRetry(() => _searchWikipedia(variant)),
+        _withRetry(() => _searchOpenverse(variant)),
+        _withRetry(() => _searchWikidata(variant)),
+      ]);
+      allBatches.addAll(batches);
+    }
+
+    final results = <OnlinePlantSearchResult>[];
+    for (final batch in allBatches) {
+      results.addAll(batch);
+    }
 
     final deduped = <String, OnlinePlantSearchResult>{};
     for (final r in results) {
-      final key = '${r.scientificName.toLowerCase()}|${r.source.toLowerCase()}';
+      final normalizedSci = r.scientificName.toLowerCase().trim();
+      final normalizedName = r.name.toLowerCase().trim();
+      final key = normalizedSci.isNotEmpty ? normalizedSci : normalizedName;
       final existing = deduped[key];
       if (existing == null || r.confidence > existing.confidence) {
         deduped[key] = r;
@@ -67,8 +115,66 @@ class OnlinePlantSearchService {
       merged = await _applyRegionBias(merged, countryCode.toUpperCase());
     }
 
-    merged.sort((a, b) => b.confidence.compareTo(a.confidence));
-    return merged.take(30).toList();
+    merged = merged
+        .map((item) => item.copyWith(
+            confidence: ((item.confidence * 0.78) +
+                    ((_sourceWeight[item.source] ?? 0.55) * 0.22))
+                .clamp(0.0, 1.0)))
+        .toList();
+
+    merged.sort((a, b) {
+      final rb = _relevanceScore(q, b);
+      final ra = _relevanceScore(q, a);
+      return rb.compareTo(ra);
+    });
+    return merged.take(80).toList();
+  }
+
+  List<String> _buildQueryVariants(String query) {
+    final q = query.toLowerCase().trim();
+    final variants = <String>{q};
+
+    if (!q.contains('plant')) {
+      variants.add('$q plant');
+    }
+
+    if (q.endsWith('ies') && q.length > 4) {
+      variants.add('${q.substring(0, q.length - 3)}y');
+    } else if (q.endsWith('s') && q.length > 3) {
+      variants.add(q.substring(0, q.length - 1));
+    } else {
+      variants.add('${q}s');
+    }
+
+    return variants.toList();
+  }
+
+  Future<List<OnlinePlantSearchResult>> _withRetry(
+    Future<List<OnlinePlantSearchResult>> Function() fn,
+  ) async {
+    try {
+      final first = await fn();
+      if (first.isNotEmpty) return first;
+      return await fn();
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  double _relevanceScore(String query, OnlinePlantSearchResult result) {
+    final qTokens = query
+        .toLowerCase()
+        .split(RegExp(r'[^a-z0-9]+'))
+        .where((t) => t.length > 1)
+        .toSet();
+    final text = '${result.name} ${result.scientificName} ${result.family} ${result.snippet ?? ''}'
+        .toLowerCase();
+    var hits = 0;
+    for (final t in qTokens) {
+      if (text.contains(t)) hits += 1;
+    }
+    final lexical = qTokens.isEmpty ? 0.0 : hits / qTokens.length;
+    return (result.confidence * 0.75) + (lexical * 0.25);
   }
 
   Future<List<OnlinePlantSearchResult>> _searchGbif(String query) async {
@@ -223,6 +329,86 @@ class OnlinePlantSearchService {
           imageUrl: thumb,
           snippet: 'Open web media search result',
           confidence: 0.52,
+        );
+      }).toList();
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  Future<List<OnlinePlantSearchResult>> _searchOpenFarm(String query) async {
+    final uri = Uri.parse(
+      'https://openfarm.cc/api/v1/crops/?filter=${Uri.encodeQueryComponent(query)}',
+    );
+
+    try {
+      final response = await http.get(uri).timeout(const Duration(seconds: 12));
+      if (response.statusCode != 200) return const [];
+
+      final data = jsonDecode(response.body) as Map<String, dynamic>;
+      final rows = (data['data'] as List?)?.cast<Map<String, dynamic>>() ??
+          const <Map<String, dynamic>>[];
+
+      return rows.map((row) {
+        final id = (row['id'] ?? '').toString();
+        final attrs = row['attributes'] is Map<String, dynamic>
+            ? row['attributes'] as Map<String, dynamic>
+            : const <String, dynamic>{};
+        final name = (attrs['name'] ?? 'Unknown crop').toString();
+        final desc = (attrs['description'] ?? '').toString();
+        final sun = (attrs['sun_requirements'] ?? '').toString();
+        final main = (attrs['main_image_path'] ?? '').toString();
+
+        return OnlinePlantSearchResult(
+          id: 'openfarm_$id',
+          name: name,
+          scientificName: name,
+          family: 'OpenFarm',
+          source: 'OpenFarm',
+          snippet: [desc, if (sun.isNotEmpty) 'Sun: $sun']
+              .where((v) => v.trim().isNotEmpty)
+              .join(' • '),
+          imageUrl: main.isEmpty ? null : main,
+          confidence: 0.74,
+        );
+      }).toList();
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  Future<List<OnlinePlantSearchResult>> _searchWikidata(String query) async {
+    final uri = Uri.parse(
+      'https://www.wikidata.org/w/api.php'
+      '?action=wbsearchentities'
+      '&format=json'
+      '&language=en'
+      '&limit=10'
+      '&type=item'
+      '&search=${Uri.encodeQueryComponent('$query plant')}',
+    );
+
+    try {
+      final response = await http.get(uri).timeout(const Duration(seconds: 12));
+      if (response.statusCode != 200) return const [];
+
+      final data = jsonDecode(response.body) as Map<String, dynamic>;
+      final rows = (data['search'] as List?)?.cast<Map<String, dynamic>>() ??
+          const <Map<String, dynamic>>[];
+
+      return rows.map((row) {
+        final id = (row['id'] ?? '').toString();
+        final title = (row['label'] ?? 'Unknown').toString();
+        final description = (row['description'] ?? 'Wikidata entity').toString();
+
+        return OnlinePlantSearchResult(
+          id: 'wikidata_$id',
+          name: title,
+          scientificName: title,
+          family: 'Wikidata',
+          source: 'Wikidata Search',
+          snippet: description,
+          confidence: 0.55,
         );
       }).toList();
     } catch (_) {

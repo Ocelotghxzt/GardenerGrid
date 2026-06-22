@@ -72,22 +72,33 @@ class PlantIdService {
       return localRanked;
     }
 
-    final remoteA = await _identifyWithInaturalistCv(image, plants, countryCode: countryCode);
-    final remoteB = await _identifyWithInaturalistLegacy(image, plants, countryCode: countryCode);
+    final remoteA = await _identifyWithInaturalistCv(
+      image,
+      plants,
+      countryCode: countryCode,
+      plantsOnly: true,
+    );
+    final remoteB = await _identifyWithInaturalistCv(
+      image,
+      plants,
+      countryCode: countryCode,
+      plantsOnly: false,
+    );
 
     final remoteEnsemble = _ensembleRemote(remoteA, remoteB);
     if (remoteEnsemble.isEmpty) {
-      return localRanked;
+      return const <PlantIdMatch>[];
     }
 
     return _mergeAndRank(remoteEnsemble, localRanked);
   }
 
-  // Provider A: iNaturalist computer-vision scoring endpoint.
+  // Open-source/public provider: iNaturalist computer-vision scoring endpoint.
   Future<List<PlantIdMatch>> _identifyWithInaturalistCv(
     XFile image,
     List<PlantEntry> plants, {
     String? countryCode,
+    required bool plantsOnly,
   }) async {
     try {
       final request = http.MultipartRequest(
@@ -96,6 +107,9 @@ class PlantIdService {
       );
 
       request.files.add(await http.MultipartFile.fromPath('image', image.path));
+      if (plantsOnly) {
+        request.fields['taxon_id'] = '47126';
+      }
       final streamed = await request.send().timeout(const Duration(seconds: 25));
       if (streamed.statusCode != 200) return [];
 
@@ -104,36 +118,9 @@ class PlantIdService {
       return _toMatches(
         plants: plants,
         candidates: candidates,
-        sourceTag: 'online:inaturalist_cv',
-        countryCode: countryCode,
-      );
-    } catch (_) {
-      return [];
-    }
-  }
-
-  // Provider B: iNaturalist identify endpoint (separate model pipeline).
-  Future<List<PlantIdMatch>> _identifyWithInaturalistLegacy(
-    XFile image,
-    List<PlantEntry> plants, {
-    String? countryCode,
-  }) async {
-    try {
-      final request = http.MultipartRequest(
-        'POST',
-        Uri.parse('https://www.inaturalist.org/observations/identify'),
-      );
-
-      request.files.add(await http.MultipartFile.fromPath('image', image.path));
-      final streamed = await request.send().timeout(const Duration(seconds: 25));
-      if (streamed.statusCode != 200) return [];
-
-      final payload = jsonDecode(await streamed.stream.bytesToString());
-      final candidates = _extractCandidates(payload);
-      return _toMatches(
-        plants: plants,
-        candidates: candidates,
-        sourceTag: 'online:inaturalist_identify',
+        sourceTag: plantsOnly
+            ? 'online:inaturalist_cv_plants'
+            : 'online:inaturalist_cv_global',
         countryCode: countryCode,
       );
     } catch (_) {

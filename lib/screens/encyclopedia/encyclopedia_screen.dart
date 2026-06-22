@@ -77,6 +77,11 @@ class _EncyclopediaScreenState extends State<EncyclopediaScreen>
 		title: const Text('Encyclopedia'),
 		actions: [
 		  IconButton(
+			icon: const Icon(Icons.local_library_outlined),
+			onPressed: () => context.push('/encyclopedia/library'),
+			tooltip: 'Library Mode',
+		  ),
+		  IconButton(
 			icon: const Icon(Icons.refresh),
 			onPressed: () => context
 				.read<EncyclopediaProvider>()
@@ -224,9 +229,11 @@ class _OnlineResultsCard extends StatelessWidget {
 				  ?.copyWith(fontWeight: FontWeight.w700),
 			),
 			const SizedBox(height: 4),
-			Text('Live results for "$query" from GBIF and iNaturalist.'),
+			Text('Live results for "$query" from free open sources (GBIF, iNaturalist, OpenFarm, Wikipedia, Openverse, Wikidata).'),
+			const SizedBox(height: 4),
+			Text('Showing ${results.length} open-library matches.'),
 			const SizedBox(height: 8),
-			...results.take(6).map((r) => _OnlineResultTile(result: r)),
+			...results.take(12).map((r) => _OnlineResultTile(result: r)),
 		  ],
 		),
 	  ),
@@ -253,7 +260,27 @@ class _OnlineResultTile extends StatelessWidget {
 		  ? CircleAvatar(backgroundImage: NetworkImage(result.imageUrl!))
 		  : const CircleAvatar(child: Icon(Icons.travel_explore)),
 	  title: Text(result.name),
-	  subtitle: Text('${result.scientificName} • ${result.source}'),
+	  subtitle: Column(
+		crossAxisAlignment: CrossAxisAlignment.start,
+		children: [
+		  Text('${result.scientificName} • ${result.source}'),
+		  const SizedBox(height: 4),
+		  Wrap(
+			spacing: 6,
+			runSpacing: 4,
+			children: [
+			  Chip(
+				label: Text(result.source),
+				visualDensity: VisualDensity.compact,
+			  ),
+			  Chip(
+				label: Text('Confidence ${(result.confidence * 100).toStringAsFixed(0)}%'),
+				visualDensity: VisualDensity.compact,
+			  ),
+			],
+		  ),
+		],
+	  ),
 	  trailing: local != null
 		  ? const Icon(Icons.chevron_right)
 		  : const Icon(Icons.cloud_done, size: 18),

@@ -12,6 +12,7 @@ import '../screens/maintenance/maintenance_screen.dart';
 import '../screens/market/market_dashboard_screen.dart';
 import '../screens/bluetooth/bluetooth_screen.dart';
 import '../screens/encyclopedia/encyclopedia_screen.dart';
+import '../screens/encyclopedia/library_mode_screen.dart';
 import '../screens/ai/ai_assistant_screen.dart';
 import '../screens/almanac/almanac_screen.dart';
 import '../screens/plant_id/plant_id_screen.dart';
@@ -65,6 +66,8 @@ GoRouter makeRouter(AuthProvider auth) => GoRouter(
             builder: (_, __) => const MeshSettingsScreen()),
         GoRoute(
             path: '/encyclopedia', builder: (_, __) => const EncyclopediaScreen()),
+        GoRoute(
+            path: '/encyclopedia/library', builder: (_, __) => const LibraryModeScreen()),
         GoRoute(
           path: '/encyclopedia/plant/:id',
           builder: (_, state) =>

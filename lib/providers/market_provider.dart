@@ -36,6 +36,9 @@ class MarketProvider extends ChangeNotifier {
           ? await _service.fetchPricesForRegion(cropName, stateCode)
           : await _service.fetchLocalPrices(cropName);
       _prices[cropName.toLowerCase()] = results;
+      if (results.isEmpty) {
+        _error = 'No live USDA entries found. Showing estimated averages when available.';
+      }
     } catch (e) {
       _error = 'Could not load market data. Check your connection.';
     }

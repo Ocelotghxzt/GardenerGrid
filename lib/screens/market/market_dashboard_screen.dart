@@ -52,7 +52,8 @@ class _MarketDashboardScreenState extends State<MarketDashboardScreen> {
 
     return Scaffold(
       appBar: AppBar(title: const Text('Market Prices')),
-      body: Column(
+      body: SafeArea(
+      child: Column(
         children: [
           // Search bar
           Padding(
@@ -105,14 +106,20 @@ class _MarketDashboardScreenState extends State<MarketDashboardScreen> {
 
           // Crop market tiles
           Expanded(
-            child: filtered.isEmpty
+          child: filtered.isEmpty
                 ? const EmptyState(
                     icon: Icons.trending_up,
                     title: 'No Results',
                     subtitle: 'Try a different crop name.',
                   )
                 : ListView.builder(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: EdgeInsets.fromLTRB(
+                16,
+                0,
+                16,
+                24 + MediaQuery.of(context).padding.bottom,
+              ),
                     itemCount: filtered.length,
                     itemBuilder: (ctx, i) {
                       final crop = filtered[i];
@@ -133,6 +140,7 @@ class _MarketDashboardScreenState extends State<MarketDashboardScreen> {
                   ),
           ),
         ],
+        ),
       ),
     );
   }

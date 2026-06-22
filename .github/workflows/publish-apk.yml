@@ -1,0 +1,50 @@
+name: Publish APK Package
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  publish-apk:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build APK
+        run: flutter build apk --release
+
+      - name: Upload CI artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: gardenergrid-apk-release
+          path: build/app/outputs/flutter-apk/app-release.apk
+
+      - name: Publish APK to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest-apk
+          name: GardenerGrid Latest APK
+          body: |
+            Automated APK package publish from main branch.
+            Download the attached app-release.apk.
+          files: build/app/outputs/flutter-apk/app-release.apk
+          make_latest: true

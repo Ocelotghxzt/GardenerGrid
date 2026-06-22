@@ -5,10 +5,11 @@ import '../models/foraging_entry.dart';
 import '../models/market_price.dart';
 import '../models/plant_entry.dart';
 import '../models/soil_sample.dart';
+import 'online_plant_search_service.dart';
 
 class LocalStorageService {
   static const _dbName = 'gardenergrid_local.db';
-	static const _dbVersion = 3;
+	static const _dbVersion = 4;
 
   Database? _db;
 
@@ -22,13 +23,19 @@ class LocalStorageService {
 		await _createBaseTables(db);
 		await _createMeshRetryQueueTable(db);
 		await _createCommunityMarketCacheTable(db);
+		await _createOnlineEncyclopediaCacheTable(db);
 	  },
 	  onUpgrade: (db, oldVersion, newVersion) async {
+		// Ensure core tables exist even for users upgrading from legacy DB states.
+		await _createBaseTables(db);
 		if (oldVersion < 2) {
 		  await _createMeshRetryQueueTable(db);
 		}
 		if (oldVersion < 3) {
 		  await _createCommunityMarketCacheTable(db);
+		}
+		if (oldVersion < 4) {
+		  await _createOnlineEncyclopediaCacheTable(db);
 		}
 	  },
 	);
@@ -104,6 +111,19 @@ class LocalStorageService {
 		id TEXT PRIMARY KEY,
 		crop_name TEXT NOT NULL,
 		region TEXT NOT NULL,
+		search_blob TEXT NOT NULL,
+		payload_json TEXT NOT NULL,
+		updated_at INTEGER NOT NULL
+	  )
+	''');
+  }
+
+  Future<void> _createOnlineEncyclopediaCacheTable(Database db) async {
+	await db.execute('''
+	  CREATE TABLE IF NOT EXISTS encyclopedia_online_cache (
+		id TEXT PRIMARY KEY,
+		query_key TEXT NOT NULL,
+		source TEXT NOT NULL,
 		search_blob TEXT NOT NULL,
 		payload_json TEXT NOT NULL,
 		updated_at INTEGER NOT NULL
@@ -397,6 +417,60 @@ class LocalStorageService {
 	return rows
 		.map((row) => _marketPriceFromJson(
 			jsonDecode(row['payload_json']! as String) as Map<String, dynamic>))
+		.toList();
+  }
+
+  Future<void> cacheOnlineEncyclopediaResults(
+	String query,
+	List<OnlinePlantSearchResult> results,
+  ) async {
+	final db = await database;
+	final q = query.trim().toLowerCase();
+	if (q.isEmpty) return;
+
+	final nowMs = DateTime.now().millisecondsSinceEpoch;
+	final batch = db.batch();
+
+	for (final item in results.take(120)) {
+	  final id = '${q}_${item.source}_${item.id}'
+		  .toLowerCase()
+		  .replaceAll(RegExp(r'[^a-z0-9_-]'), '_');
+	  batch.insert(
+		'encyclopedia_online_cache',
+		{
+		  'id': id,
+		  'query_key': q,
+		  'source': item.source,
+		  'search_blob': '${item.name} ${item.scientificName} ${item.family} ${item.snippet ?? ''}'
+			  .toLowerCase(),
+		  'payload_json': jsonEncode(item.toJson()),
+		  'updated_at': nowMs,
+		},
+		conflictAlgorithm: ConflictAlgorithm.replace,
+	  );
+	}
+
+	await batch.commit(noResult: true);
+  }
+
+  Future<List<OnlinePlantSearchResult>> searchOnlineEncyclopediaCache(
+	String query,
+  ) async {
+	final db = await database;
+	final q = query.trim().toLowerCase();
+	if (q.length < 2) return const <OnlinePlantSearchResult>[];
+
+	final rows = await db.query(
+	  'encyclopedia_online_cache',
+	  where: 'query_key = ? OR search_blob LIKE ?',
+	  whereArgs: [q, '%$q%'],
+	  orderBy: 'updated_at DESC',
+	  limit: 120,
+	);
+
+	return rows
+		.map((row) => OnlinePlantSearchResult.fromJson(
+			jsonDecode(row['payload_json'] as String) as Map<String, dynamic>))
 		.toList();
   }
 

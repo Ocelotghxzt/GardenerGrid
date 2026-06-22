@@ -30,23 +30,10 @@ void main() async {
   String? firebaseError;
 
   try {
-    // Guard: if the options still contain placeholder values, Firebase will
-    // throw an exception (invalid API key).  We catch it and show a setup
-    // screen instead of crashing, so the rest of the UI is always reachable.
     final opts = DefaultFirebaseOptions.currentPlatform;
-    if (opts.apiKey.startsWith('YOUR_')) {
-      firebaseError =
-          'Firebase is not configured yet.\n\n'
-          'Steps:\n'
-          '1. Create a project at console.firebase.google.com\n'
-          '2. Install FlutterFire CLI:\n   dart pub global activate flutterfire_cli\n'
-          '3. Run: flutterfire configure\n'
-          '4. Replace lib/firebase_options.dart with the generated file.';
-    } else {
-      await Firebase.initializeApp(options: opts);
-      await NotificationService().init();
-      firebaseReady = true;
-    }
+    await Firebase.initializeApp(options: opts);
+    await NotificationService().init();
+    firebaseReady = true;
   } catch (e) {
     firebaseError = 'Firebase initialisation failed:\n$e';
   }

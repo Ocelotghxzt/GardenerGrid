@@ -1,12 +1,13 @@
 :root {
-  --bg: #f4f1e8;
-  --ink: #1d2f26;
-  --muted: #53655a;
+  --bg: #f5f0e7;
+  --ink: #15291f;
+  --muted: #4c5f55;
   --card: #fffdf8;
-  --line: #d9d0bc;
-  --primary: #1f7a4f;
+  --line: #d7ccb4;
+  --primary: #0f7b45;
   --primary-ink: #f2fff7;
-  --accent: #b96a2d;
+  --accent: #d56f2b;
+  --focus: #111111;
 }
 
 * {
@@ -17,8 +18,9 @@ html,
 body {
   margin: 0;
   padding: 0;
-  background: radial-gradient(circle at 90% 10%, #fce9d3 0%, transparent 38%),
-    radial-gradient(circle at 0% 100%, #d9e8dd 0%, transparent 42%),
+  background: radial-gradient(circle at 90% 10%, #ffe5c2 0%, transparent 36%),
+    radial-gradient(circle at 0% 100%, #cfe7d9 0%, transparent 45%),
+    radial-gradient(circle at 55% -10%, #fff6d7 0%, transparent 30%),
     var(--bg);
   color: var(--ink);
   font-family: "Space Grotesk", system-ui, sans-serif;
@@ -42,13 +44,30 @@ body {
   align-items: center;
   padding: 16px 24px;
   backdrop-filter: blur(8px);
-  background: rgba(244, 241, 232, 0.78);
+  background: rgba(245, 240, 231, 0.82);
   border-bottom: 1px solid var(--line);
+}
+
+.brand-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
 .brand {
   font-weight: 700;
   letter-spacing: 0.04em;
+}
+
+.badge-owned {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #fff;
+  background: var(--focus);
+  padding: 5px 9px;
+  border-radius: 999px;
 }
 
 nav {
@@ -90,7 +109,23 @@ main {
   background: var(--card);
   border-radius: 18px;
   padding: 24px;
-  box-shadow: 0 16px 34px rgba(24, 34, 28, 0.08);
+  box-shadow: 0 18px 44px rgba(21, 35, 28, 0.11);
+}
+
+.hero-copy {
+  position: relative;
+  overflow: hidden;
+}
+
+.hero-copy::after {
+  content: "";
+  position: absolute;
+  right: -65px;
+  top: -65px;
+  width: 180px;
+  height: 180px;
+  background: radial-gradient(circle, rgba(15, 123, 69, 0.18) 0%, transparent 70%);
+  pointer-events: none;
 }
 
 .eyebrow {
@@ -113,6 +148,11 @@ h1 {
   color: var(--muted);
   font-size: 17px;
   line-height: 1.6;
+}
+
+.micro-note {
+  font-size: 13px;
+  font-weight: 600;
 }
 
 .hero-actions {
@@ -174,7 +214,7 @@ h1 {
   border: 1px solid var(--line);
   border-radius: 14px;
   padding: 14px;
-  background: linear-gradient(160deg, #fffdf7 0%, #f7f1e5 100%);
+  background: linear-gradient(160deg, #fffdf7 0%, #f3efe5 100%);
 }
 
 .kpis strong {
@@ -204,7 +244,7 @@ h1 {
 
 .grid article {
   border: 1px solid var(--line);
-  background: #fffcf5;
+  background: linear-gradient(180deg, #fffcf5 0%, #fcf7ed 100%);
   padding: 14px;
   border-radius: 12px;
 }
@@ -243,7 +283,7 @@ h1 {
   border: 1px solid var(--line);
   border-radius: 12px;
   padding: 12px 14px;
-  background: #fffdf7;
+  background: linear-gradient(180deg, #fffdf7 0%, #fbf5e8 100%);
   margin-bottom: 10px;
 }
 
@@ -278,6 +318,18 @@ footer {
 
 footer p {
   margin: 4px 0;
+}
+
+footer a {
+  color: var(--primary);
+  font-weight: 700;
+  text-decoration: none;
+}
+
+a:focus-visible,
+button:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
 }
 
 @media (max-width: 900px) {

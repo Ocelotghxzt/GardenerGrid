@@ -39,10 +39,10 @@ class MarketService {
   }
 
   Future<List<MarketPrice>> fetchLocalPrices(String cropName) async {
+    final merged = <MarketPrice>[];
+
     final publicHints = await _fetchFromUsdaPublicReports(cropName);
-    if (publicHints.isNotEmpty) {
-      return publicHints;
-    }
+    merged.addAll(publicHints);
 
     try {
       // Opportunistic protected route fallback when public report data
@@ -57,25 +57,30 @@ class MarketService {
         final data = jsonDecode(response.body);
         final results = data['results'] as List<dynamic>? ?? [];
         if (results.isNotEmpty) {
-          return results
+          merged.addAll(results
               .map((r) => MarketPrice.fromUsdaJson(r as Map<String, dynamic>))
               .where((p) => p.cropName.isNotEmpty)
-              .toList();
+              .toList());
         }
       }
     } catch (_) {
       // Fall through to static fallback.
     }
-    return _getFallbackPrices(cropName);
+
+    if (merged.isEmpty) {
+      merged.addAll(_getFallbackPrices(cropName));
+    }
+
+    return _dedupeAndSort(merged, cropName);
   }
 
   Future<List<MarketPrice>> fetchPricesForRegion(
       String cropName, String stateCode) async {
+    final merged = <MarketPrice>[];
+
     final publicHints =
         await _fetchFromUsdaPublicReports(cropName, stateCode: stateCode);
-    if (publicHints.isNotEmpty) {
-      return publicHints;
-    }
+    merged.addAll(publicHints);
 
     try {
       final uri = Uri.parse(
@@ -89,14 +94,31 @@ class MarketService {
         final data = jsonDecode(response.body);
         final results = data['results'] as List<dynamic>? ?? [];
         if (results.isNotEmpty) {
-          return results
+          merged.addAll(results
               .map((r) => MarketPrice.fromUsdaJson(r as Map<String, dynamic>))
               .where((p) => p.cropName.isNotEmpty)
-              .toList();
+              .toList());
         }
       }
     } catch (_) {}
-    return _getFallbackPrices(cropName);
+
+    if (merged.isEmpty) {
+      final fallback = _getFallbackPrices(cropName)
+          .map((p) => MarketPrice(
+                cropName: p.cropName,
+                pricePerUnit: p.pricePerUnit,
+                unit: p.unit,
+                source: p.source,
+                region: stateCode,
+                fetchedAt: p.fetchedAt,
+                marketName: p.marketName,
+                marketAddress: p.marketAddress,
+              ))
+          .toList();
+      merged.addAll(fallback);
+    }
+
+    return _dedupeAndSort(merged, cropName);
   }
 
   Future<List<MarketPrice>> _fetchFromUsdaPublicReports(
@@ -116,7 +138,7 @@ class MarketService {
       final data = jsonDecode(response.body) as Map<String, dynamic>;
       final reports = data['reports'] as List<dynamic>? ?? const [];
       final fallback = _getFallbackPrices(cropName);
-        final fallbackPrice =
+      final fallbackPrice =
           fallback.isNotEmpty ? fallback.first.pricePerUnit : 0.0;
       final fallbackUnit = fallback.isNotEmpty ? fallback.first.unit : 'unit';
 
@@ -139,7 +161,7 @@ class MarketService {
               cropName: cropName,
               pricePerUnit: fallbackPrice,
               unit: fallbackUnit,
-              source: 'USDA AMS Report Index',
+              source: 'USDA AMS Report (Indexed)',
               region: region,
               fetchedAt: DateTime.tryParse(publishedDate) ?? DateTime.now(),
               marketName: title,
@@ -195,32 +217,41 @@ class MarketService {
     }
   }
 
-  /// Returns reasonable average market prices for common crops when API is unavailable
+  /// Returns reasonable average market prices for common crops when API is unavailable.
+  /// Includes wholesale and consumer retail averages for robustness.
   List<MarketPrice> _getFallbackPrices(String cropName) {
     final name = cropName.toLowerCase();
     final now = DateTime.now();
 
-    // Average wholesale prices per unit (based on typical 2024-2025 USDA data)
     final fallback = {
-      'tomatoes': (0.85, 'per lb'),
-      'lettuce': (1.25, 'per head'),
-      'peppers': (1.50, 'per lb'),
-      'cucumbers': (0.95, 'per lb'),
-      'herbs': (3.50, 'per bunch'),
-      'squash': (0.75, 'per lb'),
-      'zucchini': (0.85, 'per lb'),
-      'beans': (1.20, 'per lb'),
-      'peas': (1.50, 'per lb'),
-      'carrots': (0.65, 'per lb'),
-      'radishes': (1.10, 'per bunch'),
-      'spinach': (2.50, 'per lb'),
-      'kale': (3.25, 'per lb'),
-      'potatoes': (0.40, 'per lb'),
-      'onions': (0.55, 'per lb'),
-      'garlic': (1.50, 'per bulb'),
-      'strawberries': (2.75, 'per lb'),
-      'peaches': (1.85, 'per lb'),
-      'berries': (3.25, 'per lb'),
+      'tomato': (1.85, 'lb'),
+      'lettuce': (2.25, 'head'),
+      'pepper': (2.30, 'lb'),
+      'cucumber': (1.65, 'lb'),
+      'basil': (2.95, 'bunch'),
+      'mint': (2.50, 'bunch'),
+      'parsley': (2.25, 'bunch'),
+      'cilantro': (2.10, 'bunch'),
+      'squash': (1.45, 'lb'),
+      'zucchini': (1.55, 'lb'),
+      'bean': (1.95, 'lb'),
+      'pea': (2.20, 'lb'),
+      'carrot': (1.20, 'lb'),
+      'radish': (1.80, 'bunch'),
+      'spinach': (3.30, 'lb'),
+      'kale': (2.95, 'lb'),
+      'potato': (0.95, 'lb'),
+      'onion': (1.05, 'lb'),
+      'garlic': (0.95, 'bulb'),
+      'strawberry': (3.95, 'lb'),
+      'blueberry': (4.95, 'lb'),
+      'raspberry': (5.60, 'lb'),
+      'apple': (1.70, 'lb'),
+      'peach': (2.40, 'lb'),
+      'corn': (0.75, 'ear'),
+      'soybean': (0.42, 'lb'),
+      'wheat': (0.28, 'lb'),
+      'pumpkin': (0.68, 'lb'),
     };
 
     final key = fallback.keys.firstWhere(
@@ -235,13 +266,45 @@ class MarketService {
       MarketPrice(
         cropName: cropName,
         pricePerUnit: item.$1.toDouble(),
-        unit: item.$2,
+        unit: 'per ${item.$2}',
         fetchedAt: now,
-        marketName: 'Average Wholesale',
-        marketAddress: 'National Average',
-        source: 'USDA AMS (Estimated)',
+        marketName: 'Average Retail (US)',
+        marketAddress: 'National baseline',
+        source: 'Fallback Retail Average',
+        region: 'USA',
+      ),
+      MarketPrice(
+        cropName: cropName,
+        pricePerUnit: (item.$1 * 0.68),
+        unit: 'per ${item.$2}',
+        fetchedAt: now,
+        marketName: 'Average Wholesale (US)',
+        marketAddress: 'National baseline',
+        source: 'Fallback Wholesale Average',
         region: 'USA',
       ),
     ];
+  }
+
+  List<MarketPrice> _dedupeAndSort(List<MarketPrice> input, String cropName) {
+    final map = <String, MarketPrice>{};
+    for (final p in input) {
+      if (p.cropName.isEmpty || p.pricePerUnit <= 0) continue;
+      final key = '${p.marketName ?? ''}-${p.region}-${p.source}-${p.unit}'.toLowerCase();
+      map[key] = p;
+    }
+
+    final items = map.values.toList()
+      ..sort((a, b) {
+        final src = a.source.compareTo(b.source);
+        if (src != 0) return src;
+        return b.fetchedAt.compareTo(a.fetchedAt);
+      });
+
+    if (items.isEmpty) {
+      return _getFallbackPrices(cropName);
+    }
+
+    return items;
   }
 }

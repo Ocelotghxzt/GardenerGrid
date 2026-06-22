@@ -72,6 +72,15 @@ class _PlantIdScreenState extends State<PlantIdScreen> {
   }
 
   Future<void> _identify() async {
+    if (_selectedImage == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please add a plant photo. AI photo ID requires an image.'),
+        ),
+      );
+      return;
+    }
+
     final encyclopedia = context.read<EncyclopediaProvider>();
     if (encyclopedia.plants.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -100,6 +109,14 @@ class _PlantIdScreenState extends State<PlantIdScreen> {
       descriptors: descriptors,
       countryCode: _countryCode,
     );
+
+    if (mounted && results.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('AI photo identification is temporarily unavailable. Try another clear photo.'),
+        ),
+      );
+    }
 
     if (mounted) {
       setState(() {
@@ -158,8 +175,13 @@ class _PlantIdScreenState extends State<PlantIdScreen> {
             child: Column(
               children: [
                 const Text(
-                  '1. Take or select a photo (optional)',
+				  '1. Take or select a photo',
                   style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'No manual description is required. Identification runs from the photo.',
+                  style: TextStyle(color: Colors.grey[700], fontSize: 12),
                 ),
                 const SizedBox(height: 12),
                 if (_selectedImage != null)
@@ -211,16 +233,14 @@ class _PlantIdScreenState extends State<PlantIdScreen> {
 
         // Descriptor form
         Card(
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  '2. Describe the plant',
-                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
-                ),
-                const SizedBox(height: 12),
+          child: ExpansionTile(
+            title: const Text(
+              '2. Optional details to improve accuracy',
+              style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+            ),
+            subtitle: const Text('Skip this section if you already added a photo.'),
+            childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            children: [
                 const Text('Plant type:', style: TextStyle(fontWeight: FontWeight.w600)),
                 DropdownButtonFormField<PlantHabit>(
                   value: _habit,
@@ -282,8 +302,7 @@ class _PlantIdScreenState extends State<PlantIdScreen> {
                     hintText: 'Leaf shape, smell, texture, etc.',
                   ),
                 ),
-              ],
-            ),
+            ],
           ),
         ),
         const SizedBox(height: 20),
@@ -293,7 +312,13 @@ class _PlantIdScreenState extends State<PlantIdScreen> {
             icon: _identifying
                 ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
                 : const Icon(Icons.search),
-            label: Text(_identifying ? 'Identifying...' : 'Identify Plant'),
+            label: Text(
+              _identifying
+                  ? 'Identifying...'
+                  : _selectedImage != null
+                      ? 'Identify From Photo'
+                      : 'Identify Plant',
+            ),
             onPressed: _identifying ? null : _identify,
           ),
         ),

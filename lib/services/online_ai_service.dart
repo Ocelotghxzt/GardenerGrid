@@ -9,8 +9,7 @@ import '../models/soil_sample.dart';
 class OnlineAiService {
   static const _keyApiKey = 'ai_api_key';
   static const _keyEndpoint = 'ai_endpoint';
-	static const _defaultEndpoint = 'https://api.deepseek.com/chat/completions';
-  static const _defaultModel = 'deepseek-chat';
+	static const _defaultEndpoint = 'https://api.duckduckgo.com/';
 
   // ── Configuration ─────────────────────────────────────────────────────────
   Future<String?> getApiKey() async {
@@ -34,8 +33,7 @@ class OnlineAiService {
   }
 
   Future<bool> isConfigured() async {
-	final key = await getApiKey();
-	return key != null && key.isNotEmpty;
+	return true;
   }
 
   // ── System prompt ─────────────────────────────────────────────────────────
@@ -86,12 +84,32 @@ Guidelines:
 	SoilSample? soilContext,
   }) async {
 	final apiKey = await getApiKey();
-	if (apiKey == null || apiKey.isEmpty) {
-	  return '⚠️ **Online AI not configured.**\n\nNo API key found. To enable online mode, you need to set your API key in app preferences.\n\nEndpoint: ${await getEndpoint()}\nModel: $_defaultModel';
-	}
-
 	final endpoint = await getEndpoint();
 
+	if (apiKey != null && apiKey.isNotEmpty && endpoint != _defaultEndpoint) {
+	  final custom = await _chatWithCustomEndpoint(
+		apiKey: apiKey,
+		endpoint: endpoint,
+		history: history,
+		userMessage: userMessage,
+		soilContext: soilContext,
+	  );
+
+	  if (custom != null) {
+		return custom;
+	  }
+	}
+
+	return _chatWithFreeSources(userMessage, soilContext: soilContext);
+  }
+
+  Future<String?> _chatWithCustomEndpoint({
+	required String apiKey,
+	required String endpoint,
+	required List<Map<String, String>> history,
+	required String userMessage,
+	SoilSample? soilContext,
+  }) async {
 	final messages = [
 	  {'role': 'system', 'content': _systemPrompt(soilContext: soilContext)},
 	  ...history,
@@ -99,32 +117,120 @@ Guidelines:
 	];
 
 	try {
-	  final response = await http.post(
-		Uri.parse(endpoint),
-		headers: {
-		  'Content-Type': 'application/json',
-		  'Authorization': 'Bearer $apiKey',
-		},
-		body: jsonEncode({
-		  'model': _defaultModel,
-		  'messages': messages,
-		  'max_tokens': 1024,
-		  'temperature': 0.7,
-		}),
-	  ).timeout(const Duration(seconds: 30));
+	  final response = await http
+		  .post(
+			Uri.parse(endpoint),
+			headers: {
+			  'Content-Type': 'application/json',
+			  'Authorization': 'Bearer $apiKey',
+			},
+			body: jsonEncode({
+			  'model': 'deepseek-chat',
+			  'messages': messages,
+			  'max_tokens': 900,
+			  'temperature': 0.5,
+			}),
+		  )
+		  .timeout(const Duration(seconds: 25));
 
 	  if (response.statusCode == 200) {
 		final data = jsonDecode(response.body) as Map<String, dynamic>;
 		return (data['choices'] as List).first['message']['content'] as String;
-	  } else if (response.statusCode == 401) {
-		return "🔑 **Invalid API key (401).**\n\nYour API key was rejected by the server. Check:\n- The key is correct and hasn't expired\n- The key has access to the $_defaultModel model\n\nEndpoint used: $endpoint";
-	  } else if (response.statusCode == 429) {
-		return '⏱️ **Rate limit reached (429).**\n\nToo many requests. Wait a moment before trying again.';
-	  } else {
-		return '❌ **Server error (${response.statusCode}).**\n\nEndpoint: $endpoint\nResponse: ${response.body.substring(0, response.body.length > 200 ? 200 : response.body.length)}';
 	  }
+
+	  if (response.statusCode == 401 ||
+		  response.statusCode == 402 ||
+		  response.statusCode == 403 ||
+		  response.statusCode == 429) {
+		return null;
+	  }
+
+	  return null;
+	} catch (_) {
+	  return null;
+	}
+  }
+
+  Future<String> _chatWithFreeSources(
+	String userMessage, {
+	SoilSample? soilContext,
+  }) async {
+	try {
+	  final ddgUri = Uri.parse(
+		'https://api.duckduckgo.com/?q=${Uri.encodeQueryComponent(userMessage)}&format=json&no_html=1&no_redirect=1',
+	  );
+	  final ddgResponse = await http.get(ddgUri).timeout(const Duration(seconds: 14));
+
+	  String? heading;
+	  String? abstractText;
+	  String? abstractUrl;
+
+	  if (ddgResponse.statusCode == 200) {
+		final data = jsonDecode(ddgResponse.body) as Map<String, dynamic>;
+		heading = (data['Heading'] ?? '').toString().trim();
+		abstractText = (data['AbstractText'] ?? '').toString().trim();
+		abstractUrl = (data['AbstractURL'] ?? '').toString().trim();
+	  }
+
+	  final wikiText = await _wikipediaSummary(userMessage);
+
+	  final sb = StringBuffer();
+	  sb.writeln('## Online Answer (Free Sources)');
+	  if (heading != null && heading.isNotEmpty) {
+		sb.writeln('**Topic:** $heading');
+		sb.writeln();
+	  }
+
+	  if (abstractText != null && abstractText.isNotEmpty) {
+		sb.writeln(abstractText);
+		sb.writeln();
+	  }
+
+	  if (wikiText != null && wikiText.isNotEmpty) {
+		sb.writeln('**Reference summary:**');
+		sb.writeln(wikiText);
+		sb.writeln();
+	  }
+
+	  if (sb.length < 90) {
+		sb.writeln('I could not find enough online context for that exact phrasing.');
+		sb.writeln('Try a more specific question with plant or crop name.');
+	  }
+
+	  if (soilContext != null) {
+		sb.writeln('**Your soil context:** pH ${soilContext.ph.toStringAsFixed(1)}, '
+			'N ${soilContext.nitrogen.toStringAsFixed(0)}, '
+			'P ${soilContext.phosphorus.toStringAsFixed(0)}, '
+			'K ${soilContext.potassium.toStringAsFixed(0)}.');
+	  }
+
+	  if (abstractUrl != null && abstractUrl.isNotEmpty) {
+		sb.writeln();
+		sb.writeln('Source: $abstractUrl');
+	  }
+
+	  sb.writeln('\n_No sign-in or paid key required for this mode._');
+	  return sb.toString();
 	} catch (e) {
-	  return '📡 **Connection failed.**\n\nEndpoint: $endpoint\nError: ${e.toString()}\n\nCheck your internet connection or switch to Offline mode.';
+	  return '📡 **Connection failed.**\n\nFree online sources were unreachable. Error: ${e.toString()}';
+	}
+  }
+
+  Future<String?> _wikipediaSummary(String query) async {
+	try {
+	  final title = query.trim().split(RegExp(r'\s+')).take(6).join(' ');
+	  if (title.isEmpty) return null;
+	  final wikiUri = Uri.parse(
+		'https://en.wikipedia.org/api/rest_v1/page/summary/${Uri.encodeComponent(title)}',
+	  );
+	  final response = await http.get(wikiUri).timeout(const Duration(seconds: 10));
+	  if (response.statusCode != 200) return null;
+	  final data = jsonDecode(response.body) as Map<String, dynamic>;
+	  final extract = (data['extract'] ?? '').toString().trim();
+	  if (extract.isEmpty) return null;
+	  return extract.length > 380 ? '${extract.substring(0, 380)}...' : extract;
+	} catch (_) {
+	  return null;
 	}
   }
 }

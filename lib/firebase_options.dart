@@ -28,11 +28,11 @@ class DefaultFirebaseOptions {
 
   // Replace all values below with your actual Firebase project config.
   static const FirebaseOptions web = FirebaseOptions(
-    apiKey: 'YOUR_WEB_API_KEY',
-    appId: 'YOUR_WEB_APP_ID',
-    messagingSenderId: 'YOUR_SENDER_ID',
-    projectId: 'YOUR_PROJECT_ID',
-    storageBucket: 'YOUR_PROJECT_ID.appspot.com',
+    apiKey: 'AIzaSyBF1rXPu-eRI0InCQKdFX7auG09L7pcPXE',
+    appId: '1:1000027219280:web:ee4206784ebc5f71b13855',
+    messagingSenderId: '1000027219280',
+    projectId: 'soilsampleapp1',
+    storageBucket: 'soilsampleapp1.firebasestorage.app',
   );
 
   static const FirebaseOptions android = FirebaseOptions(

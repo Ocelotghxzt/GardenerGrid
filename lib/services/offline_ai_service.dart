@@ -30,6 +30,11 @@ class OfflineAiService {
 	  return _plantResponse(plantMatch, q);
 	}
 
+	final rankedPlants = _rankPlantsByQuery(q);
+	if (rankedPlants.isNotEmpty) {
+	  return _rankedPlantResponse(query, rankedPlants);
+	}
+
 	// 4. Companion planting
 	if (q.contains('companion')) {
 	  return _companionResponse(q);
@@ -51,7 +56,51 @@ class OfflineAiService {
 	}
 
 	// 7. Fallback
-	return _fallback(q);
+	return _fallback(query);
+  }
+
+  List<PlantEntry> _rankPlantsByQuery(String q) {
+	final terms = q
+		.split(RegExp(r'[^a-z0-9]+'))
+		.where((t) => t.length > 2)
+		.toSet();
+	if (terms.isEmpty) return const <PlantEntry>[];
+
+	final scored = <MapEntry<PlantEntry, int>>[];
+	for (final plant in plants) {
+	  var score = 0;
+	  final bag = [
+		plant.name,
+		plant.scientificName,
+		plant.family,
+		plant.category,
+		plant.description,
+		plant.tags.join(' '),
+		plant.gardeningTips,
+	  ].join(' ').toLowerCase();
+
+	  for (final term in terms) {
+		if (bag.contains(term)) score += 1;
+	  }
+
+	  if (score > 0) {
+		scored.add(MapEntry(plant, score));
+	  }
+	}
+
+	scored.sort((a, b) => b.value.compareTo(a.value));
+	return scored.take(3).map((e) => e.key).toList();
+  }
+
+  String _rankedPlantResponse(String originalQuery, List<PlantEntry> matches) {
+	final buf = StringBuffer();
+	buf.writeln('**Offline answer for:** "$originalQuery"\n');
+	buf.writeln('Most relevant plants in local data:');
+	for (final p in matches) {
+	  buf.writeln('- **${p.name}** (*${p.scientificName}*): ${p.gardeningTips}');
+	}
+	buf.writeln('\nIf you want, ask for one of these by name and I will give full care details.');
+	return buf.toString();
   }
 
   bool _hasAdvancedTopicKeywords(String q) =>
@@ -319,9 +368,10 @@ class OfflineAiService {
 	return buf.toString();
   }
 
-  String _fallback(String q) {
+  String _fallback(String userQuery) {
 	final buf = StringBuffer();
 	buf.writeln('**GardenerGrid Offline Assistant**\n');
+	buf.writeln('I could not fully map this question yet: "$userQuery"\n');
 	buf.writeln(
 		"I'm running in **offline mode** with a local knowledge base. I can help with:\n");
 	buf.writeln('- 🌿 **Plant encyclopedia** — Ask about ${plants.take(3).map((p) => p.name).join(', ')}, and more');

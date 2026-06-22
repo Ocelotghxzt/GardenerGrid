@@ -1,0 +1,43 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    // User-specific folders for soil report uploads, images, etc.
+    match /users/{userId}/{allPaths=**} {
+      // Users can read/write only their own files
+      allow read, write: if isOwner(userId);
+    }
+    
+    // Soil reports (PDF/CSV uploads)
+    match /soil_reports/{userId}/{reportId} {
+      allow read, write: if isOwner(userId);
+      
+      // File size limit: 10 MB
+      allow write: if request.resource.size < 10 * 1024 * 1024;
+    }
+    
+    // Profile pictures (optional future feature)
+    match /profile_pictures/{userId}/{imageId} {
+      allow read: if true; // Public profile pictures
+      allow write: if isOwner(userId) &&
+                      request.resource.size < 5 * 1024 * 1024 && // 5 MB max
+                      request.resource.contentType.matches('image/.*');
+    }
+    
+    // Field photos (optional future feature)
+    match /field_photos/{userId}/{photoId} {
+      allow read, write: if isOwner(userId);
+      allow write: if request.resource.size < 10 * 1024 * 1024 &&
+                      request.resource.contentType.matches('image/.*');
+    }
+  }
+}

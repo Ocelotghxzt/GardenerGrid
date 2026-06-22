@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <!--
+    If you are serving your web app in a path other than the root, change the
+    href value below to reflect the base path you are serving from.
+
+    The path provided below has to start and end with a slash "/" in order for
+    it to work correctly.
+
+    For more details:
+    * https://developer.mozilla.org/en-US/docs/Web/HTML/Element/base
+
+    This is a placeholder for base href that will be replaced by the value of
+    the `--base-href` argument provided to `flutter build`.
+  -->
+  <base href="$FLUTTER_BASE_HREF">
+
+  <meta charset="UTF-8">
+  <meta content="IE=Edge" http-equiv="X-UA-Compatible">
+  <meta name="description" content="GardenerGrid web app for soil intelligence, market insights, and grower collaboration.">
+  <meta name="theme-color" content="#1f7a4f">
+  <meta property="og:title" content="GardenerGrid Web App">
+  <meta property="og:description" content="Soil intelligence, market context, and farm collaboration in one platform.">
+  <meta property="og:type" content="website">
+
+  <!-- iOS meta tags & icons -->
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
+  <meta name="apple-mobile-web-app-title" content="GardenerGrid">
+  <link rel="apple-touch-icon" href="icons/Icon-192.png">
+
+  <!-- Favicon -->
+  <link rel="icon" type="image/png" href="favicon.png"/>
+
+  <title>GardenerGrid Web App</title>
+  <link rel="manifest" href="manifest.json">
+  <style>
+    html, body {
+      margin: 0;
+      height: 100%;
+      background: radial-gradient(circle at 85% 20%, #f5ecd8 0%, transparent 35%),
+        radial-gradient(circle at 0% 100%, #d8e6dd 0%, transparent 36%),
+        #f4f1e8;
+      font-family: "Segoe UI", Tahoma, sans-serif;
+    }
+
+    .boot {
+      height: 100%;
+      display: grid;
+      place-items: center;
+    }
+
+    .boot-card {
+      width: min(520px, calc(100% - 32px));
+      border: 1px solid #d8cfbc;
+      border-radius: 16px;
+      padding: 24px;
+      background: #fffdf8;
+      box-shadow: 0 14px 28px rgba(20, 35, 28, 0.1);
+      text-align: center;
+    }
+
+    .boot-logo {
+      font-weight: 700;
+      letter-spacing: .04em;
+      color: #1f7a4f;
+      margin-bottom: 8px;
+      font-size: 20px;
+    }
+
+    .boot-text {
+      color: #53655a;
+      margin-bottom: 14px;
+      font-size: 14px;
+    }
+
+    .bar {
+      height: 8px;
+      background: #e8e2d1;
+      border-radius: 999px;
+      overflow: hidden;
+    }
+
+    .bar > span {
+      display: block;
+      height: 100%;
+      width: 42%;
+      border-radius: 999px;
+      background: linear-gradient(90deg, #1f7a4f 0%, #b96a2d 100%);
+      animation: sweep 1.2s ease-in-out infinite;
+    }
+
+    @keyframes sweep {
+      0% { transform: translateX(-110%); }
+      100% { transform: translateX(300%); }
+    }
+  </style>
+</head>
+<body>
+  <div class="boot" id="boot">
+    <div class="boot-card">
+      <div class="boot-logo">GardenerGrid</div>
+      <div class="boot-text">Loading field intelligence workspace...</div>
+      <div class="bar"><span></span></div>
+    </div>
+  </div>
+  <script src="flutter_bootstrap.js" async></script>
+  <script>
+    window.addEventListener('flutter-first-frame', function () {
+      var boot = document.getElementById('boot');
+      if (boot) boot.remove();
+    });
+    setTimeout(function () {
+      var boot = document.getElementById('boot');
+      if (boot) boot.remove();
+    }, 10000);
+  </script>
+</body>
+</html>

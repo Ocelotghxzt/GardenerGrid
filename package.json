@@ -1,0 +1,27 @@
+{
+  "name": "gardenergrid",
+  "version": "1.0.0",
+  "description": "A cross-platform Flutter app (iOS & Android) for soil analysis, crop recommendations,\r maintenance scheduling, market pricing, and Bluetooth sensor integration — for USA farmers,\r with internationalization-ready architecture for worldwide expansion.",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs",
+    "lib": "lib",
+    "test": "test"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "build:plants:10k": "node tools/build_gbif_encyclopedia.js",
+    "build:plants:10k:with-media": "node tools/build_gbif_encyclopedia.js --include-media",
+    "build:plants:10k:offline-pack": "node tools/build_gbif_encyclopedia.js --include-media --download-images --target 10000 --max-images 10000"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "axios": "^1.18.0",
+    "cheerio": "^1.2.0",
+    "express": "^5.2.1",
+    "firebase-admin": "^14.0.0"
+  }
+}

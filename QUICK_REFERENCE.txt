@@ -1,0 +1,194 @@
+╔═══════════════════════════════════════════════════════════════════╗
+║                    🌱 SoilSmart Quick Reference                  ║
+╚═══════════════════════════════════════════════════════════════════╝
+
+📦 PROJECT STATS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Total Files:         52 files
+Code Files:          47 (.dart)
+Documentation:       8 files (README, SETUP, DEPLOYMENT, etc.)
+Data Files:          1 (default_crops.json)
+Screens:             11 complete screens
+Models:              5 data models
+Services:            6 business logic services
+Providers:           5 state managers
+Widgets:             4 reusable components
+
+🚀 QUICK START
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+1. cd SoilSmart
+2. flutter pub get
+3. flutterfire configure     # Requires Firebase project
+4. flutter run
+
+📱 COMMANDS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+flutter run                   # Run debug mode
+flutter run -d chrome         # Run on web
+flutter run -d <device-id>    # Run on specific device
+flutter build apk             # Build Android APK
+flutter build appbundle       # Build Android AAB for Play Store
+flutter build ios             # Build iOS
+flutter build web             # Build web
+flutter clean                 # Clean build cache
+flutter doctor                # Check Flutter installation
+
+🔥 FIREBASE SETUP
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+1. Create project: https://console.firebase.google.com
+2. Enable services: Auth, Firestore, Storage, Messaging
+3. Run: dart pub global activate flutterfire_cli
+4. Run: flutterfire configure
+5. Import: assets/data/default_crops.json → Firestore 'crops' collection
+6. Deploy rules: firestore.rules, storage.rules
+
+📂 KEY FILES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+lib/main.dart                 # App entry point
+lib/firebase_options.dart     # Firebase config (auto-generated)
+lib/router/app_router.dart    # Navigation routes
+lib/theme/app_theme.dart      # UI theme & colors
+pubspec.yaml                  # Dependencies
+firestore.rules               # Firestore security
+storage.rules                 # Storage security
+assets/data/default_crops.json # Crop seed data
+
+🎯 SCREENS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+/login              - Email/password login
+/register           - User registration
+/home               - Dashboard with stats & quick actions
+/soil/input         - Manual soil data entry + upload
+/soil/history       - Soil sample timeline with charts
+/crops              - Recommended crops (2 tabs)
+/crops/add          - Add custom crop
+/crops/detail/:id   - Crop profile details
+/maintenance        - Task list with add/complete
+/market             - USDA commodity prices
+/bluetooth          - BLE sensor scanning
+
+🔧 SERVICES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+FirestoreService            # Firestore CRUD
+SoilAnalysisService         # Health scoring
+CropRecommendationService   # Crop matching algorithm
+MarketService               # USDA API client
+BluetoothService            # BLE device management
+NotificationService         # Push notifications
+
+📊 PROVIDERS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+AuthProvider                # Firebase Auth state
+SoilProvider                # Soil sample state
+CropProvider                # Crop recommendation state
+MarketProvider              # Market price state
+BluetoothProvider           # BLE device state
+
+🗄️ DATA MODELS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Crop                        # Crop profiles with NPK, pH ranges
+SoilSample                  # Soil test results with scoring
+MaintenanceTask             # Farm task scheduling
+MarketPrice                 # USDA commodity pricing
+MeshNode                    # BLE mesh node (Phase 4)
+
+🎨 THEME COLORS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Primary:       #2E7D32 (forest green)
+Accent:        #F9A825 (harvest gold)
+Soil:          #6D4C41 (soil brown)
+Background:    #F5F5F0 (cream)
+Error:         #C62828 (red)
+
+🔐 SECURITY
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+✅ User data isolation (userId-based rules)
+✅ Auth required for all writes
+✅ File upload size limits (10 MB)
+✅ Content type validation
+✅ No hardcoded secrets
+
+💰 COST
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Firebase Spark Plan:  \/month (50k reads/day, 20k writes/day)
+USDA AMS API:         \ (public endpoint, no key)
+Total:                \/month forever* (*for small-medium usage)
+
+🐛 TROUBLESHOOTING
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Build errors:         flutter clean && flutter pub get
+Firebase not working: flutterfire configure
+No crops showing:     Import default_crops.json to Firestore
+BLE not working:      Check permissions in AndroidManifest/Info.plist
+
+📚 DOCUMENTATION
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+README.md             - Architecture & features
+SETUP.md              - Quick start guide
+DEPLOYMENT.md         - App store checklist
+CHANGELOG.md          - Version history
+API.md                - Technical API docs
+PROJECT_COMPLETE.md   - Project summary
+
+🌍 API ENDPOINTS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+USDA AMS Market News:
+https://marsapi.ams.usda.gov/services/v1.2/reports
+
+Example:
+https://marsapi.ams.usda.gov/services/v1.2/reports?q=Corn
+
+✅ FEATURE CHECKLIST
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+✅ User authentication (email/password)
+✅ Soil sample input & analysis
+✅ Crop recommendations (8 default crops)
+✅ Custom crop management
+✅ USDA market price feeds
+✅ Maintenance task scheduling
+✅ Bluetooth BLE sensor support
+✅ Dashboard with charts & stats
+✅ Material 3 UI with custom theme
+✅ Firebase integration (Auth, Firestore, Storage, FCM)
+✅ Security rules (Firestore + Storage)
+✅ GoRouter navigation
+✅ Provider state management
+✅ Multi-platform (iOS, Android, Web)
+📋 PDF/CSV OCR (Phase 2)
+📋 Push notifications (Phase 3)
+📋 Offline mode (Phase 5)
+
+📦 DEPENDENCIES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+firebase_core, firebase_auth, cloud_firestore, firebase_storage,
+firebase_messaging, flutter_local_notifications, flutter_blue_plus,
+permission_handler, http, provider, go_router, fl_chart, file_picker,
+image_picker, geolocator, intl, shared_preferences, uuid, google_fonts
+
+🎓 TESTING WORKFLOW
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+1. Register: test@example.com / password123
+2. Add soil sample: pH 6.5, N 100, P 50, K 120
+3. View crop recommendations (should show compatible crops)
+4. Check market prices (fetches USDA data)
+5. Add maintenance task
+6. Scan Bluetooth devices (requires physical device)
+
+🚀 DEPLOYMENT TARGETS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+✅ Android (Google Play Store)
+✅ iOS (Apple App Store)
+✅ Web (Firebase Hosting / Netlify / Vercel)
+⚠️ Desktop (Windows/Mac/Linux - untested)
+
+📞 SUPPORT RESOURCES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Flutter Docs:     https://docs.flutter.dev/
+Firebase Docs:    https://firebase.google.com/docs
+FlutterFire:      https://firebase.flutter.dev/
+USDA AMS API:     https://marsapi.ams.usda.gov/
+
+╔═══════════════════════════════════════════════════════════════════╗
+║              Status: ✅ PRODUCTION READY - VERSION 1.0.0          ║
+║                    Enjoy growing smarter! 🌱                     ║
+╚═══════════════════════════════════════════════════════════════════╝

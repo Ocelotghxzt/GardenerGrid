@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "1000027219280",
+    "project_id": "soilsampleapp1",
+    "storage_bucket": "soilsampleapp1.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1000027219280:android:ee4206784ebc5f71b13855",
+        "android_client_info": {
+          "package_name": "com.soilsmart.soilsmart"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "1000027219280-55d501ggsluo95jrcck0uga0i7i8ke0m.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBF1rXPu-eRI0InCQKdFX7auG09L7pcPXE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1000027219280-55d501ggsluo95jrcck0uga0i7i8ke0m.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

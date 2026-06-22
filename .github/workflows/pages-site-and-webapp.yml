@@ -1,0 +1,65 @@
+name: Deploy Site + Web App
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build Flutter web app
+        run: flutter build web --release --base-href /webapp/
+
+      - name: Add web route fallback
+        run: cp build/web/index.html build/web/404.html
+
+      - name: Assemble Pages content
+        run: |
+          mkdir -p dist
+          cp -r website/* dist/
+          if [ -f website/.nojekyll ]; then cp website/.nojekyll dist/.nojekyll; fi
+          mkdir -p dist/webapp
+          cp -r build/web/* dist/webapp/
+
+      - name: Verify assembled content
+        run: |
+          test -f dist/index.html
+          test -f dist/webapp/index.html
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

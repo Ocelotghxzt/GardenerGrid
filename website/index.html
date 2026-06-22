@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GardenerGrid | Smarter Soil, Better Harvests</title>
+  <meta name="description" content="GardenerGrid combines soil intelligence, market visibility, and farm collaboration into one modern platform for growers." />
+  <meta property="og:title" content="GardenerGrid" />
+  <meta property="og:description" content="Smarter Soil, Better Harvests." />
+  <meta property="og:type" content="website" />
+  <meta name="theme-color" content="#1f7a4f" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Literata:opsz,wght@7..72,400;7..72,600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="grain"></div>
+  <header class="topbar">
+    <div class="brand">GardenerGrid</div>
+    <nav>
+      <a href="#features">Features</a>
+      <a href="#results">Results</a>
+      <a href="#platform">Platform</a>
+      <a href="#faq">FAQ</a>
+      <a class="cta" href="./webapp/">Open Web App</a>
+    </nav>
+  </header>
+
+  <main>
+    <section class="hero">
+      <div class="hero-copy">
+        <p class="eyebrow">Field Intelligence Platform</p>
+        <h1>Smarter Soil. Better Harvests. Stronger Margins.</h1>
+        <p>
+          GardenerGrid helps growers make faster decisions with soil analysis,
+          USDA-aware market context, local price sharing, and resilient mesh-ready
+          collaboration.
+        </p>
+        <div class="hero-actions">
+          <a class="btn btn-primary" href="./webapp/">Launch Web App</a>
+          <a class="btn btn-secondary" href="#platform">See How It Works</a>
+        </div>
+      </div>
+      <div class="hero-card">
+        <h3>Live Snapshot</h3>
+        <ul>
+          <li><span>Soil Health</span><strong>82 / 100</strong></li>
+          <li><span>Market Signal</span><strong>USDA Synced</strong></li>
+          <li><span>Community Prices</span><strong>Local Feed Active</strong></li>
+          <li><span>Mesh Relay</span><strong>Retry Queue Enabled</strong></li>
+        </ul>
+      </div>
+    </section>
+
+    <section id="features" class="panel">
+      <h2>Everything You Need in One Workflow</h2>
+      <div class="grid">
+        <article>
+          <h3>Soil Decision Engine</h3>
+          <p>Track pH, NPK, moisture, and recommendations with field-ready inputs and historical trend views.</p>
+        </article>
+        <article>
+          <h3>Market Visibility</h3>
+          <p>Blend USDA public market intelligence with crowdsourced local pricing from nearby growers.</p>
+        </article>
+        <article>
+          <h3>Plant Intelligence</h3>
+          <p>Identify plants, browse the large encyclopedia dataset, and use AI assistant support online or offline.</p>
+        </article>
+        <article>
+          <h3>Resilient Connectivity</h3>
+          <p>BLE mesh framing with HMAC integrity, ack/retry delivery, and durable replay after app restarts.</p>
+        </article>
+      </div>
+    </section>
+
+    <section id="results" class="panel">
+      <h2>Built for Real-World Farm Operations</h2>
+      <div class="kpis">
+        <article>
+          <strong>10,000+</strong>
+          <span>plant records available for search and AI context</span>
+        </article>
+        <article>
+          <strong>Online + Offline</strong>
+          <span>decision support with fallback logic in low-connectivity conditions</span>
+        </article>
+        <article>
+          <strong>Mesh-Ready</strong>
+          <span>framed BLE packets with ack/retry and durable replay support</span>
+        </article>
+      </div>
+    </section>
+
+    <section id="platform" class="panel split">
+      <div>
+        <h2>Built for Multi-Platform Delivery</h2>
+        <p>
+          One product experience across Android, web, and iPhone-compatible CI pipelines.
+          Your team can ship updates quickly without losing data reliability in low-connectivity environments.
+        </p>
+      </div>
+      <div class="stack">
+        <div><span>Mobile</span><strong>Android APK + iOS CI</strong></div>
+        <div><span>Web App</span><strong>Flutter Web Build</strong></div>
+        <div><span>Data</span><strong>Firebase + Local Cache</strong></div>
+        <div><span>Integrations</span><strong>USDA + Community Prices</strong></div>
+      </div>
+    </section>
+
+    <section id="faq" class="panel faq">
+      <h2>Frequently Asked Questions</h2>
+      <details>
+        <summary>Can GardenerGrid work where connectivity is unstable?</summary>
+        <p>Yes. Core workflows include local caching and retry/replay logic so important field actions are not lost when networks are intermittent.</p>
+      </details>
+      <details>
+        <summary>How does market pricing data work?</summary>
+        <p>The platform combines USDA public report intelligence with community-submitted local prices to improve local decision quality.</p>
+      </details>
+      <details>
+        <summary>Can this be shipped to iPhone users?</summary>
+        <p>Yes. iPhone-compatible artifacts are produced using the included macOS CI workflow with Apple signing secrets configured in GitHub Actions.</p>
+      </details>
+    </section>
+
+    <section class="panel cta-panel">
+      <h2>Ready to Run Your Growing Operation with Better Signal?</h2>
+      <p>Use the web app now, then ship Android and iPhone builds from the same project workflow.</p>
+      <div class="hero-actions">
+        <a class="btn btn-primary" href="./webapp/">Open GardenerGrid Web App</a>
+      </div>
+    </section>
+  </main>
+
+  <footer id="contact">
+    <p>GardenerGrid</p>
+    <p>Operational tooling for growers and farm teams.</p>
+    <p>Built for modern field intelligence workflows.</p>
+  </footer>
+</body>
+</html>

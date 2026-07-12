@@ -18,6 +18,7 @@
 - [ ] Enable Cloud Firestore
 - [ ] Enable Cloud Storage
 - [ ] Enable Cloud Messaging (FCM)
+- [ ] Deploy Firebase Functions for cloud AI
 - [ ] Configure Firestore security rules
 - [ ] Configure Storage security rules
 - [ ] Import default_crops.json to Firestore
@@ -47,6 +48,7 @@ flutterfire configure
 - [ ] Crop recommendations display correctly
 - [ ] Market prices fetch from USDA API
 - [ ] Maintenance tasks CRUD operations work
+- [ ] AI assistant responds for a signed-in account with no in-app key setup
 - [ ] Bluetooth scanning works (on real device)
 - [ ] File upload works (if testing Phase 2)
 

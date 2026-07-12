@@ -6,7 +6,8 @@
 2. Install FlutterFire CLI: `dart pub global activate flutterfire_cli`
 3. Run: `cd SoilSmart && flutter pub get` (or your local repo folder)
 4. Configure Firebase: `flutterfire configure`
-5. Run: `flutter run`
+5. Configure Cloud AI once for the project owner: `firebase functions:secrets:set AI_API_KEY && firebase deploy --only functions`
+6. Run: `flutter run`
 
 ## 📋 Detailed Setup
 
@@ -16,6 +17,14 @@ See README.md for complete architecture and features.
 1. Create project: https://console.firebase.google.com
 2. Enable Auth (Email/Password), Firestore, Storage, Messaging
 3. Import assets/data/default_crops.json to Firestore 'crops' collection
+
+### Cloud AI Setup
+Deploy the authenticated AI proxy once so every signed-in GardenerGrid account can use the assistant without entering an API key.
+
+```bash
+firebase functions:secrets:set AI_API_KEY
+firebase deploy --only functions
+```
 
 ### Firestore Rules
 ```

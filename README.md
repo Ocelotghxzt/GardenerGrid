@@ -40,11 +40,19 @@ flutterfire configure
 ```
 This replaces `lib/firebase_options.dart` with your real config.
 
-### 4. Seed Default Crops
+### 4. Configure Cloud AI
+Set the AI provider key once on the Firebase backend so signed-in users can use the assistant without entering their own key.
+
+```bash
+firebase functions:secrets:set AI_API_KEY
+firebase deploy --only functions
+```
+
+### 5. Seed Default Crops
 In Firestore console, import `assets/data/default_crops.json` into a `crops` collection.
 Or add a one-time seed function using the Firebase Admin SDK.
 
-### 5. Run the App
+### 6. Run the App
 ```bash
 flutter pub get
 flutter run

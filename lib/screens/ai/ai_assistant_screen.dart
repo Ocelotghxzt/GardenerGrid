@@ -118,9 +118,9 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
 				const SizedBox(height: 8),
 				Text(
 				  ai.onlineMode
-					  ? 'Cloud AI is reachable and active.'
+					  ? 'Your GardenerGrid account is using the cloud assistant.'
 					  : ai.preferOnline
-						  ? 'You prefer online mode, but no network is available. Using built-in plant knowledge automatically.'
+						  ? 'Cloud AI is unavailable right now. Using built-in plant knowledge automatically.'
 						  : 'Runs fully on-device using built-in plant knowledge and your saved soil data.',
 				  style: const TextStyle(color: Colors.white),
 				),

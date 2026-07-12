@@ -59,7 +59,7 @@ class AiAssistantProvider extends ChangeNotifier {
 		AiChatMessage(
 		  role: 'assistant',
 		  content:
-			  'Hi. I can help with plants, vegetables, fruit trees, herbs, soil health, botany, propagation, pests, and practical garden planning. ${_learnedNotes.isEmpty ? "I’ll start learning from your gardening context as we chat." : "I’m already tracking ${_learnedNotes.length} details about your growing context."}',
+			  'Hi. I can help with plants, vegetables, fruit trees, herbs, soil health, botany, propagation, pests, and practical garden planning. ${_learnedNotes.isEmpty ? "Your GardenerGrid account can use cloud AI automatically, and I’ll start learning from your gardening context as we chat." : "Your GardenerGrid account is ready for cloud AI, and I’m already tracking ${_learnedNotes.length} details about your growing context."}',
 		  timestamp: DateTime.now(),
 		),
 	  );
@@ -98,11 +98,14 @@ class AiAssistantProvider extends ChangeNotifier {
 
 	  String response;
 	  if (onlineMode) {
+        final history = _messages
+            .take(_messages.length - 1)
+            .where((m) => m.role == 'user' || m.role == 'assistant')
+            .map((m) => {'role': m.role, 'content': m.content})
+            .toList();
+
 		response = await _onlineService.chat(
-		  history: _messages
-			  .where((m) => m.role == 'user' || m.role == 'assistant')
-			  .map((m) => {'role': m.role, 'content': m.content})
-			  .toList(),
+		  history: history,
 		  userMessage: message,
 		  soilContext: soilContext,
           learnedContext: _learnedNotes,
@@ -143,9 +146,9 @@ class AiAssistantProvider extends ChangeNotifier {
 
   bool _shouldFallbackToOffline(String response) {
 	return response.startsWith('📡 **Connection failed.') ||
-		response.startsWith('⚠️ **Online AI not configured.') ||
-		response.startsWith('🔑 **Invalid API key') ||
-		response.startsWith('⏱️ **Rate limit reached') ||
+		response.startsWith('🛠️ **Cloud AI not available yet.') ||
+		response.startsWith('⏱️ **Cloud AI timed out.') ||
+		response.startsWith('⏱️ **Cloud AI is busy.') ||
     response.startsWith('❌ **Server error') ||
 		response.contains('Check your internet connection');
   }
@@ -161,9 +164,9 @@ class AiAssistantProvider extends ChangeNotifier {
 	}
 
 	final note = cloudAttempted
-        ? 'Cloud AI was unavailable, so I switched to the built-in plant knowledge base.\n\n'
+        ? 'Cloud AI was unavailable, so I switched to the built-in plant knowledge base automatically.\n\n'
         : _preferOnline && !_hasConnection
-		    ? 'No network detected. Using the built-in plant knowledge base.\n\n'
+		    ? 'No network detected. Using the built-in plant knowledge base automatically.\n\n'
 		    : '';
 	return '$note${offline.answer(message, soilContext: soilContext, learnedContext: _learnedNotes)}';
   }

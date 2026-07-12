@@ -8,7 +8,6 @@ import '../services/online_plant_search_service.dart';
 
 class EncyclopediaProvider extends ChangeNotifier {
 	final LocalStorageService _localStorage;
-	static const int _targetLargeDatasetSize = 10000;
 	final OnlinePlantSearchService _onlineSearchService =
 			OnlinePlantSearchService();
   List<PlantEntry> _plants = [];
@@ -39,29 +38,19 @@ class EncyclopediaProvider extends ChangeNotifier {
 	notifyListeners();
 
 	try {
-		final hasPlantCache = await _localStorage.hasPlantCache();
+	  final hasPlantCache = await _localStorage.hasPlantCache();
 	  final hasForagingCache = await _localStorage.hasForagingCache();
 
-	  final cacheCount = await _localStorage.plantCacheCount();
-	  final shouldUpgradeToLargeDataset =
-		  hasPlantCache && cacheCount > 0 && cacheCount < _targetLargeDatasetSize;
-
 	  if ((hasPlantCache && hasForagingCache) &&
-		  !forceRefresh &&
-		  !shouldUpgradeToLargeDataset) {
+		  !forceRefresh) {
 		_plants = await _localStorage.searchPlants('');
 		_foragingEntries = await _localStorage.searchForaging('');
 	  } else {
-		if (forceRefresh || shouldUpgradeToLargeDataset) {
+		if (forceRefresh) {
 		  await _localStorage.clearEncyclopediaCache();
 		}
 
-		String plantsJson;
-		try {
-		  plantsJson = await rootBundle.loadString('assets/data/plants_10000.json');
-		} catch (_) {
-		  plantsJson = await rootBundle.loadString('assets/data/plants.json');
-		}
+		final plantsJson = await rootBundle.loadString('assets/data/plants.json');
 		final foragingJson =
 			await rootBundle.loadString('assets/data/foraging.json');
 
@@ -79,7 +68,7 @@ class EncyclopediaProvider extends ChangeNotifier {
 		await _localStorage.cacheForaging(_foragingEntries);
 	  }
 	} catch (e) {
-	  _error = 'Could not load offline encyclopedia.';
+	  _error = 'Could not load offline plant knowledge.';
 	}
 
 	_loading = false;

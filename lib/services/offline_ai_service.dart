@@ -3,7 +3,7 @@ import '../models/plant_entry.dart';
 import '../models/foraging_entry.dart';
 
 /// Lightweight rules-based AI that works 100% offline.
-/// Uses the bundled encyclopedia data and soil readings to answer questions.
+/// Uses bundled plant knowledge and soil readings to answer questions.
 class OfflineAiService {
   final List<PlantEntry> plants;
   final List<ForagingEntry> foraging;
@@ -11,12 +11,16 @@ class OfflineAiService {
   OfflineAiService({required this.plants, required this.foraging});
 
   // ── Entry point ──────────────────────────────────────────────────────────
-  String answer(String query, {SoilSample? soilContext}) {
+  String answer(
+    String query, {
+    SoilSample? soilContext,
+    List<String> learnedContext = const [],
+  }) {
 	final q = query.toLowerCase();
 
 	// 1. Soil-contextual responses
 	if (soilContext != null && _hasSoilKeywords(q)) {
-	  return _soilResponse(q, soilContext);
+	  return _soilResponse(q, soilContext, learnedContext: learnedContext);
 	}
 
 	// 2. Foraging queries
@@ -25,9 +29,14 @@ class OfflineAiService {
 	}
 
 	// 3. Plant/gardening lookup
-	final plantMatch = _findPlant(q);
-	if (plantMatch != null) {
-	  return _plantResponse(plantMatch, q);
+	final plantMatches = _findPlantMatches(q);
+	if (plantMatches.isNotEmpty) {
+	  return _plantResponse(
+      plantMatches.first,
+      q,
+      related: plantMatches.skip(1).take(2).toList(),
+      learnedContext: learnedContext,
+    );
 	}
 
 	// 4. Companion planting
@@ -47,11 +56,11 @@ class OfflineAiService {
 
 	// 6. General gardening tips
 	if (_hasGardeningKeywords(q)) {
-	  return _gardeningTipsResponse(q);
+	  return _gardeningTipsResponse(q, learnedContext: learnedContext);
 	}
 
 	// 7. Fallback
-	return _fallback(q);
+	return _fallback(q, learnedContext: learnedContext);
   }
 
   bool _hasAdvancedTopicKeywords(String q) =>
@@ -86,7 +95,11 @@ class OfflineAiService {
 	  q.contains('bloom') || q.contains('seed');
 
   // ── Response builders ─────────────────────────────────────────────────────
-  String _soilResponse(String q, SoilSample soil) {
+  String _soilResponse(
+    String q,
+    SoilSample soil, {
+    List<String> learnedContext = const [],
+  }) {
 	final buf = StringBuffer();
 	buf.writeln('**Soil Analysis (offline)**\n');
 	if (soil.source == SampleSource.bluetoothSensor) {
@@ -136,6 +149,7 @@ class OfflineAiService {
 	  buf.writeln(compatible);
 	}
 
+    _appendLearnedContext(buf, learnedContext);
 	return buf.toString();
   }
 
@@ -195,48 +209,98 @@ class OfflineAiService {
 	return buf.toString();
   }
 
-  PlantEntry? _findPlant(String q) {
-	for (final p in plants) {
-	  if (q.contains(p.name.toLowerCase()) ||
-		  q.contains(p.id.replaceAll('_', ' '))) {
-		return p;
-	  }
-	}
-	for (final p in plants) {
-	  for (final tag in p.tags) {
-		if (q.contains(tag)) return p;
-	  }
-	}
-	return null;
+  List<PlantEntry> _findPlantMatches(String q) {
+    final tokens = _queryTokens(q);
+    final scored = <MapEntry<PlantEntry, double>>[];
+
+    for (final plant in plants) {
+      final haystack = [
+        plant.name,
+        plant.scientificName,
+        plant.family,
+        plant.category,
+        plant.description,
+        plant.soilPreference,
+        plant.sunlight,
+        plant.water,
+        plant.bloomSeason,
+        plant.culinaryUses,
+        plant.medicinalUses,
+        plant.gardeningTips,
+        plant.propagation,
+        ...plant.tags,
+        ...plant.companionPlants,
+        ...plant.pestRepellent,
+      ].join(' ').toLowerCase();
+
+      double score = 0;
+      final commonName = plant.name.toLowerCase();
+      final scientific = plant.scientificName.toLowerCase();
+
+      if (q.contains(commonName)) score += 5;
+      if (q.contains(scientific)) score += 4;
+      if (q.contains(plant.id.replaceAll('_', ' '))) score += 3;
+
+      for (final token in tokens) {
+        if (token.length < 3) continue;
+        if (commonName.contains(token)) {
+          score += 2.4;
+        } else if (scientific.contains(token)) {
+          score += 1.8;
+        } else if (plant.tags.any((tag) => tag.toLowerCase().contains(token))) {
+          score += 1.4;
+        } else if (haystack.contains(token)) {
+          score += 0.6;
+        }
+      }
+
+      if (score > 1.2) {
+        scored.add(MapEntry(plant, score));
+      }
+    }
+
+    scored.sort((a, b) => b.value.compareTo(a.value));
+    return scored.map((entry) => entry.key).take(3).toList();
   }
 
-  String _plantResponse(PlantEntry p, String q) {
+  String _plantResponse(
+    PlantEntry p,
+    String q, {
+    List<PlantEntry> related = const [],
+    List<String> learnedContext = const [],
+  }) {
 	final buf = StringBuffer();
 	buf.writeln('## 🌿 ${p.name}');
 	buf.writeln('*${p.scientificName}* · ${p.family} · **${p.category}**\n');
 	buf.writeln(p.description);
-	buf.writeln('\n**Growing Conditions**');
+	buf.writeln('\n**Quick care**');
 	buf.writeln('- 🌍 Soil: ${p.soilPreference}');
-	buf.writeln('- ☀️ Sunlight: ${p.sunlight}');
+	buf.writeln('- ☀️ Light: ${p.sunlight}');
 	buf.writeln('- 💧 Water: ${p.water}');
-	buf.writeln('- 🌡️ Hardiness Zone: ${p.hardinessZone}');
-	buf.writeln('- 📏 Size: ${p.heightCm}cm tall × ${p.spreadCm}cm wide');
-	buf.writeln('- 🌸 Bloom: ${p.bloomSeason}');
+	buf.writeln('- 🌡️ Hardiness zone: ${p.hardinessZone}');
+	buf.writeln('- 📏 Typical size: ${p.heightCm}cm tall × ${p.spreadCm}cm wide');
+	buf.writeln('- 🌸 Bloom season: ${p.bloomSeason}');
 
 	if (p.companionPlants.isNotEmpty) {
-	  buf.writeln('\n**Companion Plants:** ${p.companionPlants.join(', ')}');
+	  buf.writeln('\n**Companion plants:** ${p.companionPlants.join(', ')}');
 	}
 	if (p.pestRepellent.isNotEmpty) {
 	  buf.writeln('**Repels:** ${p.pestRepellent.join(', ')}');
 	}
 	if (p.culinaryUses.isNotEmpty && p.culinaryUses != 'None') {
-	  buf.writeln('\n🍽️ **Culinary:** ${p.culinaryUses}');
+	  buf.writeln('\n🍽️ **Common uses:** ${p.culinaryUses}');
 	}
 	if (p.medicinalUses.isNotEmpty) {
-	  buf.writeln('💊 **Medicinal:** ${p.medicinalUses}');
+	  buf.writeln('💊 **Traditional uses:** ${p.medicinalUses}');
 	}
-	buf.writeln('\n🌱 **Gardening Tips:** ${p.gardeningTips}');
+	buf.writeln('\n🌱 **Growing tips:** ${p.gardeningTips}');
 	buf.writeln('**Propagation:** ${p.propagation}');
+    if (related.isNotEmpty) {
+      buf.writeln(
+        '\n**Related plants you may also mean:** ${related.map((plant) => plant.name).join(', ')}',
+      );
+    }
+    _appendLearnedContext(buf, learnedContext);
 	return buf.toString();
   }
 
@@ -264,11 +328,42 @@ class OfflineAiService {
 	return buf.toString();
   }
 
-  String _gardeningTipsResponse(String q) {
+  String _gardeningTipsResponse(
+    String q, {
+    List<String> learnedContext = const [],
+  }) {
 	final buf = StringBuffer();
 	buf.writeln('**🌱 Gardening Tips (Offline)**\n');
 	buf.writeln(
-		'I have tips for ${plants.length} plants in the offline encyclopedia. Ask me about a specific plant or topic.\n');
+		'I can help with practical plant care, vegetables, fruit, herbs, flowers, and basic botany.\n');
+
+    if (q.contains('vegetable') || q.contains('tomato') || q.contains('lettuce')) {
+      buf.writeln('**Vegetables**');
+      buf.writeln('- Start with full sun, steady moisture, and compost-rich soil.');
+      buf.writeln('- Feed heavy crops such as tomatoes and peppers consistently once flowering starts.');
+      buf.writeln('- Mulch warm-season vegetables to reduce stress and water loss.\n');
+    }
+
+    if (q.contains('fruit') || q.contains('berry') || q.contains('tree')) {
+      buf.writeln('**Fruit & berries**');
+      buf.writeln('- Prioritize sun, airflow, and annual pruning for structure.');
+      buf.writeln('- Thin fruit when trees set heavily to improve size and reduce breakage.');
+      buf.writeln('- Keep watering deep and infrequent rather than shallow and daily.\n');
+    }
+
+    if (q.contains('herb') || q.contains('basil') || q.contains('rosemary')) {
+      buf.writeln('**Herbs**');
+      buf.writeln('- Harvest often to keep herbs compact and productive.');
+      buf.writeln('- Avoid overwatering Mediterranean herbs such as rosemary and lavender.');
+      buf.writeln('- Pinch flowering stems on leafy culinary herbs when you want more foliage.\n');
+    }
+
+    if (q.contains('seed') || q.contains('transplant')) {
+      buf.writeln('**Seed starting**');
+      buf.writeln('- Use bright light immediately after germination to prevent legginess.');
+      buf.writeln('- Harden seedlings off gradually for about a week before planting out.');
+      buf.writeln('- Keep the medium evenly moist, not soggy.\n');
+    }
 
 	// Surface relevant tips
 	final relevant = plants.where((p) {
@@ -285,6 +380,7 @@ class OfflineAiService {
 	  }
 	}
 
+    _appendLearnedContext(buf, learnedContext);
 	return buf.toString();
   }
 
@@ -319,17 +415,43 @@ class OfflineAiService {
 	return buf.toString();
   }
 
-  String _fallback(String q) {
+  String _fallback(
+    String q, {
+    List<String> learnedContext = const [],
+  }) {
 	final buf = StringBuffer();
 	buf.writeln('**GardenerGrid Offline Assistant**\n');
 	buf.writeln(
-		"I'm running in **offline mode** with a local knowledge base. I can help with:\n");
-	buf.writeln('- 🌿 **Plant encyclopedia** — Ask about ${plants.take(3).map((p) => p.name).join(', ')}, and more');
+		"I'm running in **offline mode** with built-in plant knowledge. I can help with:\n");
+	buf.writeln('- 🌿 **Plant care** — Ask about ${plants.take(3).map((p) => p.name).join(', ')}, and more');
+	buf.writeln('- 🍅 **Vegetables, fruit, and herbs** — growing basics, watering, pruning, and propagation');
 	buf.writeln('- 🍃 **Foraging guide** — Wild edibles, identification, safety');
 	buf.writeln('- 🧪 **Soil analysis** — Add a soil sample or use a BLE sensor for personalized advice');
 	buf.writeln('- 🤝 **Companion planting** — Ask "what are companion plants for basil?"');
 	buf.writeln('- 🐛 **Pest control** — Ask "what repels aphids?"');
-	buf.writeln('\n> For more detailed, conversational answers, **enable Online Mode** in the AI settings.');
+    if (learnedContext.isNotEmpty) {
+      buf.writeln('\n**What I remember about your growing context**');
+      for (final note in learnedContext.take(3)) {
+        buf.writeln('- $note');
+      }
+    }
 	return buf.toString();
+  }
+
+  List<String> _queryTokens(String q) => q
+      .split(RegExp(r'[^a-z0-9]+'))
+      .map((token) => token.trim())
+      .where((token) => token.isNotEmpty)
+      .toList(growable: false);
+
+  void _appendLearnedContext(
+    StringBuffer buffer,
+    List<String> learnedContext,
+  ) {
+    if (learnedContext.isEmpty) return;
+    buffer.writeln('\n**Remembered growing context**');
+    for (final note in learnedContext.take(3)) {
+      buffer.writeln('- $note');
+    }
   }
 }

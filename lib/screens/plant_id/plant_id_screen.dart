@@ -75,7 +75,9 @@ class _PlantIdScreenState extends State<PlantIdScreen> {
     final encyclopedia = context.read<EncyclopediaProvider>();
     if (encyclopedia.plants.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Encyclopedia is empty. Check app data.')),
+        const SnackBar(
+          content: Text('Plant knowledge is still loading. Try again in a moment.'),
+        ),
       );
       return;
     }
@@ -362,7 +364,7 @@ class _PlantIdScreenState extends State<PlantIdScreen> {
                         runSpacing: 4,
                         children: [
                           if (match.hasOnline)
-                            _badge('ONLINE AI', Colors.teal),
+                            _badge('ONLINE MATCH', Colors.teal),
                           if (match.hasLocal)
                             _badge('LOCAL DATA', Colors.indigo),
                         ],
@@ -378,7 +380,36 @@ class _PlantIdScreenState extends State<PlantIdScreen> {
                     ],
                   ),
                   trailing: const Icon(Icons.chevron_right),
-                  onTap: () => context.push('/encyclopedia/plant/${match.id}'),
+                  onTap: () {
+                    if (match.localPlantId != null) {
+                      context.push('/encyclopedia/plant/${match.localPlantId}');
+                      return;
+                    }
+
+                    showDialog<void>(
+                      context: context,
+                      builder: (_) => AlertDialog(
+                        title: Text(match.name),
+                        content: Text(
+                          [
+                            if (match.scientificName.isNotEmpty)
+                              'Scientific name: ${match.scientificName}',
+                            if (match.family.isNotEmpty)
+                              'Family: ${match.family}',
+                            '',
+                            match.detailSnippet ??
+                                'This result came from online photo recognition and does not yet have a local detail page.',
+                          ].join('\n'),
+                        ),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.of(context).pop(),
+                            child: const Text('Close'),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
                 ),
               );
             },
@@ -392,7 +423,7 @@ class _PlantIdScreenState extends State<PlantIdScreen> {
                 children: [
                   Icon(Icons.search_off, size: 48, color: Colors.grey),
                   SizedBox(height: 12),
-                  Text('No matches found. Try adding more descriptors.',
+                  Text('No matches found. Try another photo or add more descriptors.',
                       textAlign: TextAlign.center),
                 ],
               ),

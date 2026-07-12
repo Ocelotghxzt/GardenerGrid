@@ -110,7 +110,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                   const SizedBox(height: 12),
                   Text(
-                    'Use soil readings to guide crops, explore the encyclopedia, chat with AI, and coordinate with nearby growers.',
+                    'Use soil readings to guide crops, identify plants, chat with AI, and coordinate with nearby growers.',
                     style: TextStyle(
                       color: Colors.white.withValues(alpha: 0.9),
                       fontSize: 13,
@@ -178,12 +178,6 @@ class _HomeScreenState extends State<HomeScreen> {
                   title: 'Soil History',
                   subtitle: 'View trends',
                   onTap: () => context.push('/soil/history'),
-                ),
-                _QuickActionCard(
-                  icon: Icons.menu_book,
-                  title: 'Encyclopedia',
-                  subtitle: 'Plants & foraging',
-                  onTap: () => context.push('/encyclopedia'),
                 ),
                 _QuickActionCard(
                   icon: Icons.auto_awesome,

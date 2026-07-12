@@ -8,21 +8,27 @@ class PlantIdMatch {
   final String id;
   final String name;
   final String scientificName;
+  final String family;
   final double confidence;
   final String reason;
+  final String? detailSnippet;
+  final String? localPlantId;
   final List<String> sources;
 
   const PlantIdMatch({
     required this.id,
     required this.name,
     required this.scientificName,
+    this.family = '',
     required this.confidence,
     required this.reason,
+    this.detailSnippet,
+    this.localPlantId,
     this.sources = const <String>[],
   });
 
   bool get hasOnline => sources.any((s) => s.startsWith('online:'));
-  bool get hasLocal => sources.contains('local:descriptor');
+  bool get hasLocal => localPlantId != null && localPlantId!.isNotEmpty;
 }
 
 enum LeafShape { oval, lanceolate, heart, needle, palmate, lobed, feathery, other }
@@ -152,6 +158,7 @@ class PlantIdService {
     for (final candidate in candidates.take(16)) {
       final sci = (candidate['scientific'] ?? '').toString();
       final common = (candidate['common'] ?? '').toString();
+      final family = (candidate['family'] ?? '').toString();
       var score = ((candidate['score'] as num?)?.toDouble() ?? 0.0).clamp(0.0, 1.0);
 
       final match = _matchCandidateToLocal(
@@ -159,19 +166,40 @@ class PlantIdService {
         scientificName: sci,
         commonName: common,
       );
-      if (match == null) continue;
 
-      if (countryCode != null && countryCode.trim().isNotEmpty) {
-        score = await _applyRegionBoost(score, sci.isNotEmpty ? sci : match.scientificName, countryCode);
+      final scientificName = sci.isNotEmpty
+          ? sci
+          : match?.scientificName ?? common;
+      if (countryCode != null &&
+          countryCode.trim().isNotEmpty &&
+          scientificName.trim().isNotEmpty) {
+        score = await _applyRegionBoost(score, scientificName, countryCode);
       }
+
+      final displayName = common.isNotEmpty
+          ? common
+          : match?.name ?? scientificName;
+      final uniqueId = match?.id ??
+          _remoteCandidateId(
+            scientificName: scientificName,
+            commonName: displayName,
+            sourceTag: sourceTag,
+          );
 
       out.add(
         PlantIdMatch(
-          id: match.id,
-          name: match.name,
-          scientificName: match.scientificName,
+          id: uniqueId,
+          name: displayName,
+          scientificName: scientificName,
+          family: family.isNotEmpty ? family : (match?.family ?? ''),
           confidence: score,
-          reason: 'AI photo-ID match',
+          reason: match != null
+              ? 'Photo match aligned with local plant data'
+              : 'Photo match from online plant recognition',
+          detailSnippet: match == null
+              ? 'Matched from online recognition results. Review the common name, scientific name, and family before acting on the identification.'
+              : null,
+          localPlantId: match?.id,
           sources: [sourceTag],
         ),
       );
@@ -221,8 +249,11 @@ class PlantIdService {
           id: existing.id,
           name: existing.name,
           scientificName: existing.scientificName,
+          family: existing.family.isNotEmpty ? existing.family : m.family,
           confidence: score.clamp(0.0, 1.0),
           reason: 'AI ensemble vote (2 providers)',
+          detailSnippet: existing.detailSnippet ?? m.detailSnippet,
+          localPlantId: existing.localPlantId ?? m.localPlantId,
           sources: {...existing.sources, ...m.sources}.toList(),
         );
       }
@@ -264,6 +295,7 @@ class PlantIdService {
 
     final scientific = (taxon['name'] ?? item['name'] ?? '').toString();
     final common = (taxon['preferred_common_name'] ?? item['preferred_common_name'] ?? '').toString();
+    final family = (taxon['family_name'] ?? taxon['iconic_taxon_name'] ?? '').toString();
     final score = ((item['combined_score'] ?? item['score'] ?? item['vision_score'] ?? 0.0) as num).toDouble();
 
     if (scientific.isEmpty && common.isEmpty) return null;
@@ -271,8 +303,18 @@ class PlantIdService {
     return {
       'scientific': scientific,
       'common': common,
+      'family': family,
       'score': score,
     };
+  }
+
+  String _remoteCandidateId({
+    required String scientificName,
+    required String commonName,
+    required String sourceTag,
+  }) {
+    final seed = '${scientificName.trim().toLowerCase()}|${commonName.trim().toLowerCase()}|$sourceTag';
+    return seed.replaceAll(RegExp(r'[^a-z0-9]+'), '_');
   }
 
   PlantEntry? _matchCandidateToLocal({
@@ -352,8 +394,11 @@ class PlantIdService {
           id: existing.id,
           name: existing.name,
           scientificName: existing.scientificName,
+          family: existing.family.isNotEmpty ? existing.family : l.family,
           confidence: merged.clamp(0.0, 1.0),
           reason: 'AI ensemble + local descriptor match',
+          detailSnippet: existing.detailSnippet ?? l.detailSnippet,
+          localPlantId: existing.localPlantId ?? l.localPlantId,
           sources: {...existing.sources, ...l.sources}.toList(),
         );
       }
@@ -476,8 +521,10 @@ class PlantIdService {
             id: plant.id,
             name: plant.name,
             scientificName: plant.scientificName,
+            family: plant.family,
             confidence: confidence,
             reason: reasons.isEmpty ? 'Partial heuristic match' : '${reasons.join(', ')} match',
+            localPlantId: plant.id,
             sources: const ['local:descriptor'],
           ),
         );

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/soil_sample.dart';
+import '../services/ai_memory_service.dart';
 import '../services/offline_ai_service.dart';
 import '../services/online_ai_service.dart';
 
@@ -17,9 +18,11 @@ class AiChatMessage {
 
 class AiAssistantProvider extends ChangeNotifier {
   final OnlineAiService _onlineService;
+  final AiMemoryService _memoryService;
 
   OfflineAiService? _offlineService;
   final List<AiChatMessage> _messages = [];
+  List<String> _learnedNotes = const [];
   bool _loading = false;
 	bool _preferOnline = false;
 	bool _hasConnection = true;
@@ -30,9 +33,11 @@ class AiAssistantProvider extends ChangeNotifier {
 	bool get onlineMode => _preferOnline && _hasConnection;
 	bool get preferOnline => _preferOnline;
 	bool get hasConnection => _hasConnection;
+  List<String> get learnedNotes => List.unmodifiable(_learnedNotes);
   String? get error => _error;
 
-  AiAssistantProvider(this._onlineService);
+  AiAssistantProvider(this._onlineService, {AiMemoryService? memoryService})
+      : _memoryService = memoryService ?? AiMemoryService();
 
   void setOfflineService(OfflineAiService service) {
 	_offlineService = service;
@@ -40,6 +45,8 @@ class AiAssistantProvider extends ChangeNotifier {
   }
 
   Future<void> initialize() async {
+    _learnedNotes = await _memoryService.loadNotes();
+
 	if (!_preferOnline) {
 	  final configured = await _onlineService.isConfigured();
 	  if (configured) {
@@ -52,7 +59,7 @@ class AiAssistantProvider extends ChangeNotifier {
 		AiChatMessage(
 		  role: 'assistant',
 		  content:
-			  'Hi. I can help with soil health, gardening, botany, foraging, and local farmer coordination. Enable online mode for cloud AI, or stay offline for local encyclopedia answers.',
+			  'Hi. I can help with plants, vegetables, fruit trees, herbs, soil health, botany, propagation, pests, and practical garden planning. ${_learnedNotes.isEmpty ? "I’ll start learning from your gardening context as we chat." : "I’m already tracking ${_learnedNotes.length} details about your growing context."}',
 		  timestamp: DateTime.now(),
 		),
 	  );
@@ -87,6 +94,8 @@ class AiAssistantProvider extends ChangeNotifier {
 	notifyListeners();
 
 	try {
+      _learnedNotes = await _memoryService.learnFromMessage(message);
+
 	  String response;
 	  if (onlineMode) {
 		response = await _onlineService.chat(
@@ -96,10 +105,15 @@ class AiAssistantProvider extends ChangeNotifier {
 			  .toList(),
 		  userMessage: message,
 		  soilContext: soilContext,
+          learnedContext: _learnedNotes,
 		);
 
-		if (_looksLikeConnectivityFailure(response)) {
-		  response = _offlineFallbackResponse(message, soilContext: soilContext);
+		if (_shouldFallbackToOffline(response)) {
+		  response = _offlineFallbackResponse(
+            message,
+            soilContext: soilContext,
+            cloudAttempted: true,
+          );
 		}
 	  } else {
 		response = _offlineFallbackResponse(message, soilContext: soilContext);
@@ -127,21 +141,31 @@ class AiAssistantProvider extends ChangeNotifier {
 	notifyListeners();
   }
 
-  bool _looksLikeConnectivityFailure(String response) {
+  bool _shouldFallbackToOffline(String response) {
 	return response.startsWith('📡 **Connection failed.') ||
+		response.startsWith('⚠️ **Online AI not configured.') ||
+		response.startsWith('🔑 **Invalid API key') ||
+		response.startsWith('⏱️ **Rate limit reached') ||
+    response.startsWith('❌ **Server error') ||
 		response.contains('Check your internet connection');
   }
 
-  String _offlineFallbackResponse(String message, {SoilSample? soilContext}) {
+  String _offlineFallbackResponse(
+    String message, {
+    SoilSample? soilContext,
+    bool cloudAttempted = false,
+  }) {
 	final offline = _offlineService;
 	if (offline == null) {
 	  return 'Offline knowledge is still loading.';
 	}
 
-	final note = _preferOnline && !_hasConnection
-		? 'No network detected. Using offline knowledge base.\n\n'
-		: '';
-	return '$note${offline.answer(message, soilContext: soilContext)}';
+	final note = cloudAttempted
+        ? 'Cloud AI was unavailable, so I switched to the built-in plant knowledge base.\n\n'
+        : _preferOnline && !_hasConnection
+		    ? 'No network detected. Using the built-in plant knowledge base.\n\n'
+		    : '';
+	return '$note${offline.answer(message, soilContext: soilContext, learnedContext: _learnedNotes)}';
   }
 
   void clearChat() {
@@ -150,7 +174,7 @@ class AiAssistantProvider extends ChangeNotifier {
 	  AiChatMessage(
 		role: 'assistant',
 		content:
-			'Chat cleared. Ask about soil, gardening, medicinal plants, foraging, or mesh coordination.',
+	  	'Chat cleared. Ask about plant care, vegetables, fruit, herbs, botany, soil, pests, or propagation.',
 		timestamp: DateTime.now(),
 	  ),
 	);

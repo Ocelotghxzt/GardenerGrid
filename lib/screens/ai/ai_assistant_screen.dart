@@ -120,8 +120,8 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
 				  ai.onlineMode
 					  ? 'Cloud AI is reachable and active.'
 					  : ai.preferOnline
-						  ? 'You prefer online mode, but no network is available. Using offline encyclopedia automatically.'
-						  : 'Runs fully on-device using the local encyclopedia and your saved soil data.',
+						  ? 'You prefer online mode, but no network is available. Using built-in plant knowledge automatically.'
+						  : 'Runs fully on-device using built-in plant knowledge and your saved soil data.',
 				  style: const TextStyle(color: Colors.white),
 				),
 				const SizedBox(height: 8),
@@ -214,7 +214,7 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
 					  textInputAction: TextInputAction.newline,
 					  decoration: const InputDecoration(
 						hintText:
-							'Ask about soil, herbs, foraging safety, gardening, or local farm planning...',
+							'Ask about plants, vegetables, fruit trees, herbs, soil, pests, or propagation...',
 					  ),
 					  onSubmitted: (_) => _send(ai, soil),
 					),

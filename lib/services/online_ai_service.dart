@@ -39,7 +39,10 @@ class OnlineAiService {
   }
 
   // ── System prompt ─────────────────────────────────────────────────────────
-  String _systemPrompt({SoilSample? soilContext}) {
+  String _systemPrompt({
+    SoilSample? soilContext,
+    List<String> learnedContext = const [],
+  }) {
 	final soilSection = soilContext != null
 		? '''
 The user's current soil readings are:
@@ -59,19 +62,31 @@ Use this data to give personalized soil and plant recommendations.
 '''
 		: '';
 
+    final learnedSection = learnedContext.isEmpty
+        ? ''
+        : '''
+Known user growing context:
+${learnedContext.map((note) => '- $note').join('\n')}
+Use these details when they are relevant.
+''';
+
 	return '''You are GardenerGrid AI — an expert assistant specializing in:
-- Botany, plant science, and horticulture
-- Organic gardening and sustainable agriculture  
-- Foraging, wild edibles, and plant identification
+- Botany, plant science, horticulture, vegetables, fruit, herbs, flowers, and houseplants
+- Organic gardening and sustainable agriculture
+- Plant identification, propagation, pruning, and troubleshooting
 - Soil science, amendments, and composting
 - Companion planting and permaculture design
 - Farmers market strategy and local food systems
 - Mesh networking for rural agriculture communication
 
 $soilSection
+$learnedSection
 
 Guidelines:
 - Give practical, actionable advice tailored to the user's context.
+- Prefer common plant names first, then include scientific names when useful.
+- Be specific about plant care, pests, disease prevention, propagation, and seasonal timing.
+- If the question is ambiguous, ask a short clarifying question instead of guessing.
 - When discussing foraging, ALWAYS include safety warnings and lookalike hazards.
 - Format responses in Markdown with headers, bullet points, and bold text.
 - Keep responses concise but thorough — prioritize clarity.
@@ -84,6 +99,7 @@ Guidelines:
 	required List<Map<String, String>> history,
 	required String userMessage,
 	SoilSample? soilContext,
+    List<String> learnedContext = const [],
   }) async {
 	final apiKey = await getApiKey();
 	if (apiKey == null || apiKey.isEmpty) {
@@ -93,7 +109,13 @@ Guidelines:
 	final endpoint = await getEndpoint();
 
 	final messages = [
-	  {'role': 'system', 'content': _systemPrompt(soilContext: soilContext)},
+	  {
+        'role': 'system',
+        'content': _systemPrompt(
+          soilContext: soilContext,
+          learnedContext: learnedContext,
+        ),
+      },
 	  ...history,
 	  {'role': 'user', 'content': userMessage},
 	];

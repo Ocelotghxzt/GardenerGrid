@@ -132,6 +132,17 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
 					fontWeight: FontWeight.w600,
 				  ),
 				),
+                if (ai.verifiedAnswerCount > 0)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: Text(
+                      'Saved offline lessons from verified cloud answers: ${ai.verifiedAnswerCount}',
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.9),
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
 				if (soil != null) ...[
 				  const SizedBox(height: 12),
 				  Text(
@@ -168,33 +179,61 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
 					  return Align(
 						alignment:
 							isUser ? Alignment.centerRight : Alignment.centerLeft,
-						child: Container(
-						  margin: const EdgeInsets.only(bottom: 12),
-						  constraints: const BoxConstraints(maxWidth: 720),
-						  padding: const EdgeInsets.all(14),
-						  decoration: BoxDecoration(
-							color: isUser
-								? AppTheme.primary.withValues(alpha: 0.12)
-								: Theme.of(context).cardColor,
-							borderRadius: BorderRadius.circular(18),
-							border: Border.all(
-							  color: isUser
-								  ? AppTheme.primary.withValues(alpha: 0.18)
-								  : Colors.black12,
-							),
-						  ),
-						  child: isUser
-							  ? Text(msg.content)
-							  : MarkdownBody(
-								  data: msg.content,
-								  selectable: true,
-								  styleSheet: MarkdownStyleSheet.fromTheme(
-									Theme.of(context),
-								  ).copyWith(
-									p: Theme.of(context).textTheme.bodyMedium,
-								  ),
-								),
-						),
+						child: Column(
+                          crossAxisAlignment: isUser
+                              ? CrossAxisAlignment.end
+                              : CrossAxisAlignment.start,
+                          children: [
+                            Container(
+                              margin: const EdgeInsets.only(bottom: 4),
+                              constraints: const BoxConstraints(maxWidth: 720),
+                              padding: const EdgeInsets.all(14),
+                              decoration: BoxDecoration(
+                                color: isUser
+                                    ? AppTheme.primary.withValues(alpha: 0.12)
+                                    : Theme.of(context).cardColor,
+                                borderRadius: BorderRadius.circular(18),
+                                border: Border.all(
+                                  color: isUser
+                                      ? AppTheme.primary.withValues(alpha: 0.18)
+                                      : Colors.black12,
+                                ),
+                              ),
+                              child: isUser
+                                  ? Text(msg.content)
+                                  : MarkdownBody(
+                                      data: msg.content,
+                                      selectable: true,
+                                      styleSheet: MarkdownStyleSheet.fromTheme(
+                                        Theme.of(context),
+                                      ).copyWith(
+                                        p: Theme.of(context).textTheme.bodyMedium,
+                                      ),
+                                    ),
+                            ),
+                            if (!isUser &&
+                                (msg.canBeVerifiedUseful || msg.verifiedUseful))
+                              Padding(
+                                padding: const EdgeInsets.only(bottom: 8),
+                                child: TextButton.icon(
+                                  onPressed: msg.verifiedUseful || ai.loading
+                                      ? null
+                                      : () => ai.markMessageUseful(index),
+                                  icon: Icon(
+                                    msg.verifiedUseful
+                                        ? Icons.thumb_up
+                                        : Icons.thumb_up_outlined,
+                                    size: 18,
+                                  ),
+                                  label: Text(
+                                    msg.verifiedUseful
+                                        ? 'Saved for offline fallback'
+                                        : 'Mark useful and teach offline fallback',
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
 					  );
 					},
 				  ),

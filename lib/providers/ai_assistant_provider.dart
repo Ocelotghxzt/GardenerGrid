@@ -5,15 +5,47 @@ import '../services/offline_ai_service.dart';
 import '../services/online_ai_service.dart';
 
 class AiChatMessage {
+  final String id;
   final String role;
   final String content;
   final DateTime timestamp;
+  final String source;
+  final String? prompt;
+  final bool canBeVerifiedUseful;
+  final bool verifiedUseful;
 
   const AiChatMessage({
+    required this.id,
 	required this.role,
 	required this.content,
 	required this.timestamp,
+    this.source = 'system',
+    this.prompt,
+    this.canBeVerifiedUseful = false,
+    this.verifiedUseful = false,
   });
+
+  AiChatMessage copyWith({
+    String? id,
+    String? role,
+    String? content,
+    DateTime? timestamp,
+    String? source,
+    String? prompt,
+    bool? canBeVerifiedUseful,
+    bool? verifiedUseful,
+  }) {
+    return AiChatMessage(
+      id: id ?? this.id,
+      role: role ?? this.role,
+      content: content ?? this.content,
+      timestamp: timestamp ?? this.timestamp,
+      source: source ?? this.source,
+      prompt: prompt ?? this.prompt,
+      canBeVerifiedUseful: canBeVerifiedUseful ?? this.canBeVerifiedUseful,
+      verifiedUseful: verifiedUseful ?? this.verifiedUseful,
+    );
+  }
 }
 
 class AiAssistantProvider extends ChangeNotifier {
@@ -23,6 +55,7 @@ class AiAssistantProvider extends ChangeNotifier {
   OfflineAiService? _offlineService;
   final List<AiChatMessage> _messages = [];
   List<String> _learnedNotes = const [];
+  List<VerifiedAiAnswer> _verifiedAnswers = const [];
   bool _loading = false;
 	bool _preferOnline = false;
 	bool _hasConnection = true;
@@ -34,6 +67,7 @@ class AiAssistantProvider extends ChangeNotifier {
 	bool get preferOnline => _preferOnline;
 	bool get hasConnection => _hasConnection;
   List<String> get learnedNotes => List.unmodifiable(_learnedNotes);
+  int get verifiedAnswerCount => _verifiedAnswers.length;
   String? get error => _error;
 
   AiAssistantProvider(this._onlineService, {AiMemoryService? memoryService})
@@ -46,6 +80,7 @@ class AiAssistantProvider extends ChangeNotifier {
 
   Future<void> initialize() async {
     _learnedNotes = await _memoryService.loadNotes();
+    _verifiedAnswers = await _memoryService.loadVerifiedAnswers();
 
 	if (!_preferOnline) {
 	  final configured = await _onlineService.isConfigured();
@@ -57,10 +92,12 @@ class AiAssistantProvider extends ChangeNotifier {
 	if (_messages.isEmpty) {
 	  _messages.add(
 		AiChatMessage(
+          id: _messageId('assistant'),
 		  role: 'assistant',
 		  content:
-			  'Hi. I can help with plants, vegetables, fruit trees, herbs, soil health, botany, propagation, pests, and practical garden planning. ${_learnedNotes.isEmpty ? "Your GardenerGrid account can use cloud AI automatically, and I’ll start learning from your gardening context as we chat." : "Your GardenerGrid account is ready for cloud AI, and I’m already tracking ${_learnedNotes.length} details about your growing context."}',
+			  'Hi. I can help with plants, vegetables, fruit trees, herbs, soil health, botany, propagation, pests, and practical garden planning. ${_learnedNotes.isEmpty ? "Your GardenerGrid account can use cloud AI automatically, and I’ll start learning from your gardening context as we chat." : "Your GardenerGrid account is ready for cloud AI, and I’m already tracking ${_learnedNotes.length} details about your growing context."}${_verifiedAnswers.isEmpty ? "" : " I also have ${_verifiedAnswers.length} user-verified cloud lessons saved for offline fallback."}',
 		  timestamp: DateTime.now(),
+          source: 'system',
 		),
 	  );
 	}
@@ -85,6 +122,7 @@ class AiAssistantProvider extends ChangeNotifier {
 	_error = null;
 	_messages.add(
 	  AiChatMessage(
+        id: _messageId('user'),
 		role: 'user',
 		content: message,
 		timestamp: DateTime.now(),
@@ -97,6 +135,8 @@ class AiAssistantProvider extends ChangeNotifier {
       _learnedNotes = await _memoryService.learnFromMessage(message);
 
 	  String response;
+      var responseSource = 'offline';
+      var canBeVerifiedUseful = false;
 	  if (onlineMode) {
         final history = _messages
             .take(_messages.length - 1)
@@ -117,6 +157,9 @@ class AiAssistantProvider extends ChangeNotifier {
             soilContext: soilContext,
             cloudAttempted: true,
           );
+        } else {
+          responseSource = 'cloud';
+          canBeVerifiedUseful = true;
 		}
 	  } else {
 		response = _offlineFallbackResponse(message, soilContext: soilContext);
@@ -124,18 +167,24 @@ class AiAssistantProvider extends ChangeNotifier {
 
 	  _messages.add(
 		AiChatMessage(
+          id: _messageId('assistant'),
 		  role: 'assistant',
 		  content: response,
 		  timestamp: DateTime.now(),
+          source: responseSource,
+          prompt: message,
+          canBeVerifiedUseful: canBeVerifiedUseful,
 		),
 	  );
 	} catch (e) {
 	  _error = e.toString();
 	  _messages.add(
 		AiChatMessage(
+          id: _messageId('assistant'),
 		  role: 'assistant',
 		  content: '❌ Error: ${e.toString()}',
 		  timestamp: DateTime.now(),
+          source: 'system',
 		),
 	  );
 	}
@@ -168,19 +217,46 @@ class AiAssistantProvider extends ChangeNotifier {
         : _preferOnline && !_hasConnection
 		    ? 'No network detected. Using the built-in plant knowledge base automatically.\n\n'
 		    : '';
-	return '$note${offline.answer(message, soilContext: soilContext, learnedContext: _learnedNotes)}';
+	return '$note${offline.answer(
+      message,
+      soilContext: soilContext,
+      learnedContext: _learnedNotes,
+      verifiedAnswers: _verifiedAnswers,
+    )}';
+  }
+
+  Future<void> markMessageUseful(int index) async {
+    if (index < 0 || index >= _messages.length) return;
+    final message = _messages[index];
+    if (!message.canBeVerifiedUseful ||
+        message.verifiedUseful ||
+        message.prompt == null) {
+      return;
+    }
+
+    _verifiedAnswers = await _memoryService.learnFromVerifiedAnswer(
+      question: message.prompt!,
+      answer: message.content,
+    );
+    _messages[index] = message.copyWith(verifiedUseful: true);
+    notifyListeners();
   }
 
   void clearChat() {
 	_messages.clear();
 	_messages.add(
 	  AiChatMessage(
+        id: _messageId('assistant'),
 		role: 'assistant',
 		content:
 	  	'Chat cleared. Ask about plant care, vegetables, fruit, herbs, botany, soil, pests, or propagation.',
 		timestamp: DateTime.now(),
+        source: 'system',
 	  ),
 	);
 	notifyListeners();
   }
+
+  String _messageId(String role) =>
+      '$role-${DateTime.now().microsecondsSinceEpoch}-${_messages.length}';
 }

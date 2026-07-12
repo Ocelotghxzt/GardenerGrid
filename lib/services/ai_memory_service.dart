@@ -2,9 +2,43 @@ import 'dart:convert';
 
 import 'package:shared_preferences/shared_preferences.dart';
 
+class VerifiedAiAnswer {
+  final String question;
+  final List<String> insights;
+  final DateTime savedAt;
+
+  const VerifiedAiAnswer({
+    required this.question,
+    required this.insights,
+    required this.savedAt,
+  });
+
+  Map<String, dynamic> toJson() => {
+        'question': question,
+        'insights': insights,
+        'savedAt': savedAt.toIso8601String(),
+      };
+
+  factory VerifiedAiAnswer.fromJson(Map<String, dynamic> json) {
+    final insights = (json['insights'] as List<dynamic>? ?? const [])
+        .map((item) => item.toString())
+        .where((item) => item.trim().isNotEmpty)
+        .toList(growable: false);
+
+    return VerifiedAiAnswer(
+      question: (json['question'] ?? '').toString().trim(),
+      insights: insights,
+      savedAt:
+          DateTime.tryParse((json['savedAt'] ?? '').toString()) ?? DateTime.now(),
+    );
+  }
+}
+
 class AiMemoryService {
   static const _notesKey = 'ai_learning_notes';
+  static const _verifiedAnswersKey = 'ai_verified_answers';
   static const _maxNotes = 12;
+  static const _maxVerifiedAnswers = 10;
 
   Future<List<String>> loadNotes() async {
     final prefs = await SharedPreferences.getInstance();
@@ -43,6 +77,82 @@ class AiMemoryService {
 
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_notesKey, jsonEncode(trimmed));
+    return trimmed;
+  }
+
+  Future<List<VerifiedAiAnswer>> loadVerifiedAnswers() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_verifiedAnswersKey);
+    if (raw == null || raw.isEmpty) return const [];
+
+    try {
+      final decoded = jsonDecode(raw) as List<dynamic>;
+      return decoded
+          .whereType<Map>()
+          .map(
+            (item) => VerifiedAiAnswer.fromJson(
+              Map<String, dynamic>.from(item as Map<dynamic, dynamic>),
+            ),
+          )
+          .where((entry) => entry.question.isNotEmpty && entry.insights.isNotEmpty)
+          .toList(growable: false);
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  Future<List<VerifiedAiAnswer>> learnFromVerifiedAnswer({
+    required String question,
+    required String answer,
+  }) async {
+    final normalizedQuestion = _normalizeText(question);
+    final insights = extractVerifiedInsights(question: question, answer: answer);
+    if (normalizedQuestion.isEmpty || insights.isEmpty) {
+      return loadVerifiedAnswers();
+    }
+
+    final existing = await loadVerifiedAnswers();
+    final merged = <VerifiedAiAnswer>[...existing];
+    final matchIndex = merged.indexWhere(
+      (entry) => entry.question.toLowerCase() == normalizedQuestion.toLowerCase(),
+    );
+
+    if (matchIndex >= 0) {
+      final current = merged[matchIndex];
+      final combined = <String>[...current.insights];
+      for (final insight in insights) {
+        final alreadyStored = combined.any(
+          (entry) => entry.toLowerCase() == insight.toLowerCase(),
+        );
+        if (!alreadyStored) {
+          combined.add(insight);
+        }
+      }
+      merged[matchIndex] = VerifiedAiAnswer(
+        question: current.question,
+        insights: combined.take(6).toList(growable: false),
+        savedAt: DateTime.now(),
+      );
+    } else {
+      merged.add(
+        VerifiedAiAnswer(
+          question: normalizedQuestion,
+          insights: insights.take(6).toList(growable: false),
+          savedAt: DateTime.now(),
+        ),
+      );
+    }
+
+    merged.sort((a, b) => a.savedAt.compareTo(b.savedAt));
+    final trimmed = merged.length <= _maxVerifiedAnswers
+        ? merged
+        : merged.sublist(merged.length - _maxVerifiedAnswers);
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+      _verifiedAnswersKey,
+      jsonEncode(trimmed.map((entry) => entry.toJson()).toList()),
+    );
     return trimmed;
   }
 
@@ -90,5 +200,68 @@ class AiMemoryService {
     }
 
     return notes;
+  }
+
+  List<String> extractVerifiedInsights({
+    required String question,
+    required String answer,
+  }) {
+    final normalizedQuestion = _normalizeText(question);
+    final cleanedAnswer = answer
+        .replaceAll(RegExp(r'[*_`>#]'), '')
+        .replaceAll(RegExp(r'\[(.*?)\]\((.*?)\)'), r'$1')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+
+    if (normalizedQuestion.isEmpty || cleanedAnswer.isEmpty) return const [];
+
+    final candidates = <String>[];
+
+    void addCandidate(String value) {
+      final note = _normalizeText(value);
+      if (note.length < 18) return;
+      if (note.length > 220) return;
+      if (!_looksLikeGardeningAdvice(note)) return;
+      if (candidates.any((entry) => entry.toLowerCase() == note.toLowerCase())) {
+        return;
+      }
+      candidates.add(note);
+    }
+
+    for (final rawLine in answer.split('\n')) {
+      var line = rawLine.trim();
+      if (line.isEmpty) continue;
+      line = line.replaceFirst(RegExp(r'^[-*•\d.\)\s]+'), '');
+      line = line.replaceAll(RegExp(r'[*_`>#]'), '').trim();
+      if (line.toLowerCase() == 'next steps') continue;
+      addCandidate(line);
+    }
+
+    if (candidates.isEmpty) {
+      for (final sentence in cleanedAnswer.split(RegExp(r'(?<=[.!?])\s+'))) {
+        addCandidate(sentence);
+      }
+    }
+
+    if (candidates.isEmpty) {
+      addCandidate(cleanedAnswer);
+    }
+
+    return candidates.take(4).toList(growable: false);
+  }
+
+  String _normalizeText(String value) =>
+      value.replaceAll(RegExp(r'\s+'), ' ').trim();
+
+  bool _looksLikeGardeningAdvice(String value) {
+    final lower = value.toLowerCase();
+    final hasGardeningContext = RegExp(
+      r'\b(plant|garden|soil|compost|mulch|prune|seed|transplant|water|moisture|fertiliz|container|tomato|pepper|fruit|berry|herb|flower|tree|root|leaf|harvest|pest|disease|fung|aphid|pollinat|sun|shade|drain|calcium|nitrogen|phosphorus|potassium|blight|mildew|rot)\b',
+    ).hasMatch(lower);
+    final soundsActionable = RegExp(
+      r'\b(use|keep|avoid|apply|water|plant|prune|space|harvest|start|feed|mulch|rotate|remove|improve|check|give|protect|thin)\b',
+    ).hasMatch(lower);
+    final hasMeasuredGuidance = RegExp(r'\b\d+\b|%|cm|inch|hours?\b').hasMatch(lower);
+    return hasGardeningContext && (soundsActionable || hasMeasuredGuidance);
   }
 }

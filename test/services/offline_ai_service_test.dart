@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gardenergrid/models/foraging_entry.dart';
 import 'package:gardenergrid/models/plant_entry.dart';
+import 'package:gardenergrid/services/ai_memory_service.dart';
 import 'package:gardenergrid/services/offline_ai_service.dart';
 
 void main() {
@@ -66,5 +67,27 @@ void main() {
     expect(answer, contains('Basil'));
     expect(answer, contains('Ocimum basilicum'));
     expect(answer, contains('Remembered growing context'));
+  });
+
+  test('reuses verified cloud learnings during offline fallback', () {
+    final service = OfflineAiService(plants: [basil], foraging: [foraging]);
+
+    final answer = service.answer(
+      'How do I prevent blossom end rot in tomatoes?',
+      verifiedAnswers: [
+        VerifiedAiAnswer(
+          question: 'How do I prevent blossom end rot in tomatoes?',
+          insights: const [
+            'Keep soil moisture even so calcium uptake stays steady.',
+            'Mulch the root zone to reduce moisture swings.',
+          ],
+          savedAt: DateTime(2026),
+        ),
+      ],
+    );
+
+    expect(answer, contains('Verified useful advice I learned'));
+    expect(answer, contains('calcium uptake'));
+    expect(answer, contains('Tomatoes and peppers'));
   });
 }

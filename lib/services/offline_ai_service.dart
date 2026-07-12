@@ -1,6 +1,7 @@
 import '../models/soil_sample.dart';
 import '../models/plant_entry.dart';
 import '../models/foraging_entry.dart';
+import 'ai_memory_service.dart';
 
 /// Lightweight rules-based AI that works 100% offline.
 /// Uses bundled plant knowledge and soil readings to answer questions.
@@ -15,12 +16,19 @@ class OfflineAiService {
     String query, {
     SoilSample? soilContext,
     List<String> learnedContext = const [],
+    List<VerifiedAiAnswer> verifiedAnswers = const [],
   }) {
 	final q = query.toLowerCase();
+    final verifiedInsights = _findVerifiedInsights(q, verifiedAnswers);
 
 	// 1. Soil-contextual responses
 	if (soilContext != null && _hasSoilKeywords(q)) {
-	  return _soilResponse(q, soilContext, learnedContext: learnedContext);
+	  return _soilResponse(
+        q,
+        soilContext,
+        learnedContext: learnedContext,
+        verifiedInsights: verifiedInsights,
+      );
 	}
 
 	// 2. Foraging queries
@@ -36,6 +44,7 @@ class OfflineAiService {
       q,
       related: plantMatches.skip(1).take(2).toList(),
       learnedContext: learnedContext,
+      verifiedInsights: verifiedInsights,
     );
 	}
 
@@ -46,21 +55,29 @@ class OfflineAiService {
 
 	// 5. Pest queries
 	if (_hasPestKeywords(q)) {
-	  return _pestResponse(q);
+	  return _pestResponse(q, verifiedInsights: verifiedInsights);
 	}
 
 	// 5b. Advanced topics
 	if (_hasAdvancedTopicKeywords(q)) {
-	  return _advancedTopicResponse(q);
+	  return _advancedTopicResponse(q, verifiedInsights: verifiedInsights);
 	}
 
 	// 6. General gardening tips
 	if (_hasGardeningKeywords(q)) {
-	  return _gardeningTipsResponse(q, learnedContext: learnedContext);
+	  return _gardeningTipsResponse(
+        q,
+        learnedContext: learnedContext,
+        verifiedInsights: verifiedInsights,
+      );
 	}
 
 	// 7. Fallback
-	return _fallback(q, learnedContext: learnedContext);
+	return _fallback(
+      q,
+      learnedContext: learnedContext,
+      verifiedInsights: verifiedInsights,
+    );
   }
 
   bool _hasAdvancedTopicKeywords(String q) =>
@@ -87,7 +104,8 @@ class OfflineAiService {
 
   bool _hasPestKeywords(String q) =>
 	  q.contains('pest') || q.contains('bug') || q.contains('insect') ||
-	  q.contains('aphid') || q.contains('disease');
+	  q.contains('aphid') || q.contains('disease') ||
+    q.contains('mildew') || q.contains('blight') || q.contains('rot');
 
   bool _hasGardeningKeywords(String q) =>
 	  q.contains('plant') || q.contains('grow') || q.contains('garden') ||
@@ -99,6 +117,7 @@ class OfflineAiService {
     String q,
     SoilSample soil, {
     List<String> learnedContext = const [],
+    List<String> verifiedInsights = const [],
   }) {
 	final buf = StringBuffer();
 	buf.writeln('**Soil Analysis (offline)**\n');
@@ -149,6 +168,7 @@ class OfflineAiService {
 	  buf.writeln(compatible);
 	}
 
+    _appendVerifiedInsights(buf, verifiedInsights);
     _appendLearnedContext(buf, learnedContext);
 	return buf.toString();
   }
@@ -268,6 +288,7 @@ class OfflineAiService {
     String q, {
     List<PlantEntry> related = const [],
     List<String> learnedContext = const [],
+    List<String> verifiedInsights = const [],
   }) {
 	final buf = StringBuffer();
 	buf.writeln('## 🌿 ${p.name}');
@@ -300,6 +321,7 @@ class OfflineAiService {
         '\n**Related plants you may also mean:** ${related.map((plant) => plant.name).join(', ')}',
       );
     }
+    _appendVerifiedInsights(buf, verifiedInsights);
     _appendLearnedContext(buf, learnedContext);
 	return buf.toString();
   }
@@ -315,7 +337,10 @@ class OfflineAiService {
 	return buf.toString();
   }
 
-  String _pestResponse(String q) {
+  String _pestResponse(
+    String q, {
+    List<String> verifiedInsights = const [],
+  }) {
 	final buf = StringBuffer();
 	buf.writeln('**🐛 Natural Pest Control (Offline)**\n');
 	final repellers =
@@ -325,12 +350,23 @@ class OfflineAiService {
 	}
 	buf.writeln(
 		'\n> Tip: Intercropping pest-repelling plants among vegetables is one of the most effective organic pest management strategies.');
+    if (q.contains('disease') ||
+        q.contains('mildew') ||
+        q.contains('blight') ||
+        q.contains('rot')) {
+      buf.writeln('\n**Disease prevention basics**');
+      buf.writeln('- Improve airflow and avoid wetting foliage late in the day.');
+      buf.writeln('- Remove badly infected leaves instead of composting them cold.');
+      buf.writeln('- Rotate crops and sanitize tools between affected plants.');
+    }
+    _appendVerifiedInsights(buf, verifiedInsights);
 	return buf.toString();
   }
 
   String _gardeningTipsResponse(
     String q, {
     List<String> learnedContext = const [],
+    List<String> verifiedInsights = const [],
   }) {
 	final buf = StringBuffer();
 	buf.writeln('**🌱 Gardening Tips (Offline)**\n');
@@ -365,6 +401,8 @@ class OfflineAiService {
       buf.writeln('- Keep the medium evenly moist, not soggy.\n');
     }
 
+    _appendTopicKnowledge(buf, q);
+
 	// Surface relevant tips
 	final relevant = plants.where((p) {
 	  return p.gardeningTips.toLowerCase().contains(q.split(' ').first);
@@ -380,11 +418,15 @@ class OfflineAiService {
 	  }
 	}
 
+    _appendVerifiedInsights(buf, verifiedInsights);
     _appendLearnedContext(buf, learnedContext);
 	return buf.toString();
   }
 
-  String _advancedTopicResponse(String q) {
+  String _advancedTopicResponse(
+    String q, {
+    List<String> verifiedInsights = const [],
+  }) {
 	final buf = StringBuffer();
 	buf.writeln('**Advanced Gardening Guidance (Offline)**\n');
 
@@ -412,12 +454,15 @@ class OfflineAiService {
 	  buf.writeln('- Ask about compost, mulching, pruning, rotation, or seed starting.');
 	}
 
+    _appendTopicKnowledge(buf, q);
+    _appendVerifiedInsights(buf, verifiedInsights);
 	return buf.toString();
   }
 
   String _fallback(
     String q, {
     List<String> learnedContext = const [],
+    List<String> verifiedInsights = const [],
   }) {
 	final buf = StringBuffer();
 	buf.writeln('**GardenerGrid Offline Assistant**\n');
@@ -429,6 +474,8 @@ class OfflineAiService {
 	buf.writeln('- 🧪 **Soil analysis** — Add a soil sample or use a BLE sensor for personalized advice');
 	buf.writeln('- 🤝 **Companion planting** — Ask "what are companion plants for basil?"');
 	buf.writeln('- 🐛 **Pest control** — Ask "what repels aphids?"');
+    _appendTopicKnowledge(buf, q);
+    _appendVerifiedInsights(buf, verifiedInsights);
     if (learnedContext.isNotEmpty) {
       buf.writeln('\n**What I remember about your growing context**');
       for (final note in learnedContext.take(3)) {
@@ -454,4 +501,173 @@ class OfflineAiService {
       buffer.writeln('- $note');
     }
   }
+
+  List<String> _findVerifiedInsights(
+    String query,
+    List<VerifiedAiAnswer> verifiedAnswers,
+  ) {
+    if (verifiedAnswers.isEmpty) return const [];
+
+    final tokens = _queryTokens(query).where((token) => token.length >= 4).toSet();
+    if (tokens.isEmpty) return const [];
+
+    final scored = <MapEntry<VerifiedAiAnswer, double>>[];
+    for (final answer in verifiedAnswers) {
+      final haystack =
+          '${answer.question} ${answer.insights.join(' ')}'.toLowerCase();
+      double score = 0;
+
+      if (haystack.contains(query)) score += 6;
+      for (final token in tokens) {
+        if (answer.question.toLowerCase().contains(token)) {
+          score += 2.2;
+        } else if (haystack.contains(token)) {
+          score += 0.9;
+        }
+      }
+
+      if (score >= 1.8) {
+        scored.add(MapEntry(answer, score));
+      }
+    }
+
+    scored.sort((a, b) => b.value.compareTo(a.value));
+    final merged = <String>[];
+    for (final answer in scored.take(2).map((entry) => entry.key)) {
+      for (final insight in answer.insights) {
+        if (merged.any((entry) => entry.toLowerCase() == insight.toLowerCase())) {
+          continue;
+        }
+        merged.add(insight);
+      }
+    }
+
+    return merged.take(4).toList(growable: false);
+  }
+
+  void _appendVerifiedInsights(StringBuffer buffer, List<String> verifiedInsights) {
+    if (verifiedInsights.isEmpty) return;
+    buffer.writeln('\n**Verified useful advice I learned from past cloud answers**');
+    for (final insight in verifiedInsights.take(4)) {
+      buffer.writeln('- $insight');
+    }
+  }
+
+  void _appendTopicKnowledge(StringBuffer buffer, String q) {
+    final matches = _knowledgeTopics.where(
+      (topic) => topic.keywords.any((keyword) => q.contains(keyword)),
+    );
+
+    for (final topic in matches.take(3)) {
+      buffer.writeln('\n**${topic.title}**');
+      for (final tip in topic.tips) {
+        buffer.writeln('- $tip');
+      }
+    }
+  }
 }
+
+class _OfflineKnowledgeTopic {
+  final String title;
+  final List<String> keywords;
+  final List<String> tips;
+
+  const _OfflineKnowledgeTopic({
+    required this.title,
+    required this.keywords,
+    required this.tips,
+  });
+}
+
+const List<_OfflineKnowledgeTopic> _knowledgeTopics = [
+  _OfflineKnowledgeTopic(
+    title: 'Watering and irrigation',
+    keywords: ['water', 'watering', 'irrigat', 'dry', 'drought'],
+    tips: [
+      'Water deeply so moisture reaches the root zone instead of only wetting the surface.',
+      'Check the top few centimeters of soil before watering again to avoid overwatering.',
+      'Use mulch to slow evaporation and reduce plant stress during heat.',
+    ],
+  ),
+  _OfflineKnowledgeTopic(
+    title: 'Feeding and soil fertility',
+    keywords: ['fertiliz', 'feed', 'nitrogen', 'phosphorus', 'potassium', 'nutrient'],
+    tips: [
+      'Match fertilizer strength to growth stage: leafy growth needs more nitrogen, flowering and fruiting need balanced feeding.',
+      'Add compost regularly to improve structure, moisture retention, and slow nutrient release.',
+      'Avoid heavy feeding in dry soil because it can stress roots.',
+    ],
+  ),
+  _OfflineKnowledgeTopic(
+    title: 'Containers and raised beds',
+    keywords: ['container', 'pot', 'raised bed', 'planter'],
+    tips: [
+      'Choose larger containers whenever possible because they dry out more slowly and buffer roots from heat.',
+      'Refresh container mix with compost and slow-release nutrients during long growing seasons.',
+      'Check containers more often during hot weather because they can need water daily.',
+    ],
+  ),
+  _OfflineKnowledgeTopic(
+    title: 'Tomatoes and peppers',
+    keywords: ['tomato', 'pepper', 'blossom end rot', 'nightshade'],
+    tips: [
+      'Keep soil moisture even to prevent stress-related issues such as blossom drop and blossom end rot.',
+      'Support plants early with stakes or cages so stems are not damaged later.',
+      'Remove lower leaves if they touch soil to reduce splash-borne disease pressure.',
+    ],
+  ),
+  _OfflineKnowledgeTopic(
+    title: 'Compost and mulch',
+    keywords: ['compost', 'mulch'],
+    tips: [
+      'Compost feeds soil biology best when applied regularly in thin layers rather than all at once.',
+      'Keep mulch slightly away from stems and trunks to reduce rot and pest shelter.',
+      'Shredded leaves and straw are useful mulches for retaining moisture and reducing weeds.',
+    ],
+  ),
+  _OfflineKnowledgeTopic(
+    title: 'Pruning and training',
+    keywords: ['prune', 'pruning', 'trim', 'train'],
+    tips: [
+      'Prune with a goal: improve structure, airflow, light penetration, or harvest access.',
+      'Use clean tools and avoid removing too much live growth at one time.',
+      'Time pruning around the plant type, since spring bloomers and fruiting crops respond differently.',
+    ],
+  ),
+  _OfflineKnowledgeTopic(
+    title: 'Pests and disease prevention',
+    keywords: ['pest', 'aphid', 'bug', 'disease', 'mildew', 'blight', 'rot'],
+    tips: [
+      'Scout often so small pest outbreaks can be handled before they spread.',
+      'Prioritize airflow, sanitation, and spacing because they prevent many fungal problems.',
+      'Remove heavily infested growth promptly and monitor the newest growth for reinfestation.',
+    ],
+  ),
+  _OfflineKnowledgeTopic(
+    title: 'Seed starting and transplanting',
+    keywords: ['seed', 'seedling', 'transplant', 'germinat'],
+    tips: [
+      'Give seedlings strong light early and rotate trays if light is uneven.',
+      'Transplant when roots hold the potting mix together but are not yet circling tightly.',
+      'Harden plants off gradually before exposing them to full sun and wind outdoors.',
+    ],
+  ),
+  _OfflineKnowledgeTopic(
+    title: 'Fruit trees and berries',
+    keywords: ['fruit', 'berry', 'tree', 'orchard'],
+    tips: [
+      'Maintain airflow and open structure to improve fruit quality and disease resistance.',
+      'Thin overloaded branches so the plant can size fruit properly and avoid breakage.',
+      'Deep watering is usually better than frequent shallow watering for woody crops.',
+    ],
+  ),
+  _OfflineKnowledgeTopic(
+    title: 'Pollinators and flowering plants',
+    keywords: ['pollinat', 'bee', 'flower', 'bloom'],
+    tips: [
+      'Provide a sequence of blooms through the season to keep pollinators visiting.',
+      'Avoid spraying even low-toxicity products when flowers are actively visited.',
+      'Leave some habitat and water sources nearby for beneficial insects.',
+    ],
+  ),
+];

@@ -209,6 +209,16 @@ class _PlantIdScreenState extends State<PlantIdScreen> {
             ),
           ),
         ),
+        const SizedBox(height: 12),
+        Card(
+          color: Colors.amber.shade50,
+          child: const Padding(
+            padding: EdgeInsets.all(16),
+            child: Text(
+              'Photo ID uses online plant-recognition services plus local matching when a photo is provided. Confidence percentages are ranking estimates, not confirmed average accuracy scores. Verify important identifications with multiple trusted sources before treatment, harvesting, or eating.',
+            ),
+          ),
+        ),
         const SizedBox(height: 16),
 
         // Descriptor form
@@ -325,13 +335,32 @@ class _PlantIdScreenState extends State<PlantIdScreen> {
           ),
         Padding(
           padding: const EdgeInsets.all(16),
-          child: Row(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Icon(Icons.search, color: AppTheme.primary),
-              const SizedBox(width: 8),
-              Text(
-                '${results.length} potential match${results.length == 1 ? '' : 'es'}',
-                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+              Row(
+                children: [
+                  Icon(Icons.search, color: AppTheme.primary),
+                  const SizedBox(width: 8),
+                  Text(
+                    '${results.length} potential match${results.length == 1 ? '' : 'es'}',
+                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.amber.shade50,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.amber.shade200),
+                ),
+                child: const Text(
+                  'These results are suggestions from online AI and local matching. Treat the percentages as estimated ranking signals, not validated accuracy or identity proof.',
+                  style: TextStyle(fontSize: 12),
+                ),
               ),
             ],
           ),
@@ -403,7 +432,7 @@ class _PlantIdScreenState extends State<PlantIdScreen> {
                               'Family: ${match.family}',
                             '',
                             match.detailSnippet ??
-                                'This result came from online photo recognition and does not yet have a local detail page.',
+                                'This result came from online photo recognition and does not yet have a local detail page. Verify it with multiple trusted references before acting on it.',
                           ].join('\n'),
                         ),
                         actions: [

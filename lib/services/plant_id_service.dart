@@ -216,7 +216,7 @@ class PlantIdService {
               ? 'Photo match aligned with local plant data'
               : 'Photo match from online plant recognition',
           detailSnippet: match == null
-              ? 'Matched from online recognition results. Review the common name, scientific name, and family before acting on the identification.'
+              ? 'Matched from online recognition results. Confidence is an estimate, not a validated average accuracy score. Verify the common name, scientific name, and family with multiple trusted references before acting on the identification.'
               : null,
           localPlantId: match?.id,
           sources: [sourceTag],
@@ -668,10 +668,10 @@ class PlantIdService {
   }
 
   String getConfidenceLabel(double confidence) {
-    if (confidence >= 0.8) return 'High Match';
-    if (confidence >= 0.6) return 'Good Match';
-    if (confidence >= 0.4) return 'Possible Match';
-    return 'Unlikely Match';
+    if (confidence >= 0.8) return 'Strong Candidate';
+    if (confidence >= 0.6) return 'Likely Candidate';
+    if (confidence >= 0.4) return 'Possible Candidate';
+    return 'Low Confidence';
   }
 
   Color getConfidenceColor(double confidence) {

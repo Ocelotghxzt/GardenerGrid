@@ -37,8 +37,8 @@ class VerifiedAiAnswer {
 class AiMemoryService {
   static const _notesKey = 'ai_learning_notes';
   static const _verifiedAnswersKey = 'ai_verified_answers';
-  static const _maxNotes = 12;
-  static const _maxVerifiedAnswers = 10;
+  static const _maxNotes = 24;
+  static const _maxVerifiedAnswers = 24;
 
   Future<List<String>> loadNotes() async {
     final prefs = await SharedPreferences.getInstance();
@@ -248,6 +248,60 @@ class AiMemoryService {
     }
 
     return candidates.take(4).toList(growable: false);
+  }
+
+  List<String> relevantVerifiedInsights({
+    required String question,
+    required List<VerifiedAiAnswer> verifiedAnswers,
+    int maxInsights = 6,
+  }) {
+    if (verifiedAnswers.isEmpty) return const [];
+
+    final normalizedQuestion = _normalizeText(question).toLowerCase();
+    final tokens = normalizedQuestion
+        .split(RegExp(r'[^a-z0-9]+'))
+        .where((token) => token.length >= 4)
+        .toSet();
+    if (normalizedQuestion.isEmpty && tokens.isEmpty) return const [];
+
+    final scored = <MapEntry<VerifiedAiAnswer, double>>[];
+    for (final answer in verifiedAnswers) {
+      final haystack =
+          '${answer.question} ${answer.insights.join(' ')}'.toLowerCase();
+      double score = 0;
+
+      if (normalizedQuestion.isNotEmpty && haystack.contains(normalizedQuestion)) {
+        score += 6;
+      }
+
+      for (final token in tokens) {
+        if (answer.question.toLowerCase().contains(token)) {
+          score += 2.2;
+        } else if (haystack.contains(token)) {
+          score += 0.9;
+        }
+      }
+
+      if (score >= 1.8) {
+        scored.add(MapEntry(answer, score));
+      }
+    }
+
+    scored.sort((a, b) => b.value.compareTo(a.value));
+    final merged = <String>[];
+    for (final answer in scored.take(3).map((entry) => entry.key)) {
+      for (final insight in answer.insights) {
+        if (merged.any((entry) => entry.toLowerCase() == insight.toLowerCase())) {
+          continue;
+        }
+        merged.add(insight);
+        if (merged.length >= maxInsights) {
+          return merged;
+        }
+      }
+    }
+
+    return merged;
   }
 
   String _normalizeText(String value) =>

@@ -8,6 +8,7 @@ const DEFAULT_MODEL = "deepseek-chat";
 const MAX_HISTORY_MESSAGES = 16;
 const MAX_TEXT_LENGTH = 4000;
 const MAX_LEARNED_NOTES = 20;
+const MAX_VERIFIED_INSIGHTS = 24;
 
 exports.chatAssistant = onCall(
   {
@@ -48,6 +49,10 @@ exports.chatAssistant = onCall(
           learnedContext: normalizeStringList(
             request.data?.learnedContext,
             MAX_LEARNED_NOTES,
+          ),
+          verifiedInsights: normalizeStringList(
+            request.data?.verifiedInsights,
+            MAX_VERIFIED_INSIGHTS,
           ),
         }),
       },
@@ -139,7 +144,7 @@ exports.chatAssistant = onCall(
   },
 );
 
-function buildSystemPrompt({soilContext, learnedContext}) {
+function buildSystemPrompt({soilContext, learnedContext, verifiedInsights}) {
   const sections = [
     "You are GardenerGrid AI — an expert assistant specializing in:",
     "- Botany, plant science, horticulture, vegetables, fruit, herbs, flowers, and houseplants",
@@ -177,6 +182,15 @@ function buildSystemPrompt({soilContext, learnedContext}) {
       "Known user growing context:",
       ...learnedContext.map((note) => `- ${note}`),
       "Use these details when they are relevant.",
+    );
+  }
+
+  if (verifiedInsights.length) {
+    sections.push(
+      "",
+      "User-verified lessons from past successful answers:",
+      ...verifiedInsights.map((note) => `- ${note}`),
+      "Reuse these lessons when they are relevant and consistent with the current question.",
     );
   }
 

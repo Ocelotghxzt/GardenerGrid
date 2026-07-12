@@ -234,36 +234,27 @@ class OfflineAiService {
     final scored = <MapEntry<PlantEntry, double>>[];
 
     for (final plant in plants) {
-      final haystack = [
-        plant.name,
-        plant.scientificName,
-        plant.family,
-        plant.category,
-        plant.description,
-        plant.soilPreference,
-        plant.sunlight,
-        plant.water,
-        plant.bloomSeason,
-        plant.culinaryUses,
-        plant.medicinalUses,
-        plant.gardeningTips,
-        plant.propagation,
-        ...plant.tags,
-        ...plant.companionPlants,
-        ...plant.pestRepellent,
-      ].join(' ').toLowerCase();
+      final haystack = plant.searchTerms.join(' ').toLowerCase();
+      final aliases = plant.commonNameAliases
+          .map((alias) => alias.toLowerCase())
+          .toList(growable: false);
 
       double score = 0;
       final commonName = plant.name.toLowerCase();
       final scientific = plant.scientificName.toLowerCase();
+      final genus = scientific.split(' ').first;
 
       if (q.contains(commonName)) score += 5;
       if (q.contains(scientific)) score += 4;
+      if (genus.isNotEmpty && q.contains(genus)) score += 2.6;
       if (q.contains(plant.id.replaceAll('_', ' '))) score += 3;
+      if (aliases.any((alias) => q.contains(alias))) score += 3.2;
 
       for (final token in tokens) {
         if (token.length < 3) continue;
-        if (commonName.contains(token)) {
+        if (aliases.any((alias) => alias.contains(token))) {
+          score += 2.6;
+        } else if (commonName.contains(token)) {
           score += 2.4;
         } else if (scientific.contains(token)) {
           score += 1.8;
@@ -293,6 +284,14 @@ class OfflineAiService {
 	final buf = StringBuffer();
 	buf.writeln('## 🌿 ${p.name}');
 	buf.writeln('*${p.scientificName}* · ${p.family} · **${p.category}**\n');
+    final aliases = p.commonNameAliases
+        .where((alias) => alias.toLowerCase() != p.name.toLowerCase())
+        .toSet()
+        .take(3)
+        .toList(growable: false);
+    if (aliases.isNotEmpty) {
+      buf.writeln('**Also called:** ${aliases.join(', ')}\n');
+    }
 	buf.writeln(p.description);
 	buf.writeln('\n**Quick care**');
 	buf.writeln('- 🌍 Soil: ${p.soilPreference}');
@@ -402,11 +401,14 @@ class OfflineAiService {
     }
 
     _appendTopicKnowledge(buf, q);
+    _appendCareGuidance(buf, q);
 
 	// Surface relevant tips
+    final tokens = _queryTokens(q).where((token) => token.length >= 4).toList();
 	final relevant = plants.where((p) {
-	  return p.gardeningTips.toLowerCase().contains(q.split(' ').first);
-	}).take(3);
+      final haystack = p.searchTerms.join(' ').toLowerCase();
+      return tokens.any((token) => haystack.contains(token));
+	}).take(4);
 
 	for (final p in relevant) {
 	  buf.writeln('**${p.name}:** ${p.gardeningTips}\n');
@@ -488,7 +490,9 @@ class OfflineAiService {
   List<String> _queryTokens(String q) => q
       .split(RegExp(r'[^a-z0-9]+'))
       .map((token) => token.trim())
-      .where((token) => token.isNotEmpty)
+      .where(
+        (token) => token.isNotEmpty && !_queryStopwords.contains(token),
+      )
       .toList(growable: false);
 
   void _appendLearnedContext(
@@ -565,6 +569,43 @@ class OfflineAiService {
       }
     }
   }
+
+  void _appendCareGuidance(StringBuffer buffer, String q) {
+    if (q.contains('houseplant') || q.contains('indoor')) {
+      buffer.writeln('\n**Houseplants**');
+      buffer.writeln('- Let the potting mix partly dry only when the plant type prefers it; many indoor plants suffer more from overwatering than underwatering.');
+      buffer.writeln('- Bright indirect light is safer for many foliage plants than deep shade or harsh midday sun.');
+      buffer.writeln('- Empty saucers after watering so roots are not left in stagnant water.');
+    }
+
+    if (q.contains('vegetable') ||
+        q.contains('tomato') ||
+        q.contains('pepper') ||
+        q.contains('squash') ||
+        q.contains('cucumber')) {
+      buffer.writeln('\n**Vegetable production**');
+      buffer.writeln('- Match spacing to mature size so leaves dry quickly and disease pressure stays lower.');
+      buffer.writeln('- Feed leafy crops lightly and fruiting crops more steadily once buds and flowers appear.');
+      buffer.writeln('- Harvest often to keep many vegetables productive and tender.');
+    }
+
+    if (q.contains('fruit') ||
+        q.contains('berry') ||
+        q.contains('citrus') ||
+        q.contains('orchard')) {
+      buffer.writeln('\n**Fruit crops**');
+      buffer.writeln('- Fruiting plants usually need the strongest light, steady moisture, and disciplined pruning for reliable quality.');
+      buffer.writeln('- Remove damaged, mummified, or diseased fruit quickly to reduce reinfection pressure.');
+      buffer.writeln('- Thin overloaded crops so the plant can size fruit properly and avoid limb breakage.');
+    }
+
+    if (q.contains('flower') || q.contains('rose') || q.contains('pollinator')) {
+      buffer.writeln('\n**Flowers and pollinators**');
+      buffer.writeln('- Deadhead repeatedly blooming ornamentals when you want more flowers instead of seed set.');
+      buffer.writeln('- Group pollinator plants in patches and overlap bloom times so beneficial insects stay nearby.');
+      buffer.writeln('- Water at the base whenever possible to keep foliage drier and blooms cleaner.');
+    }
+  }
 }
 
 class _OfflineKnowledgeTopic {
@@ -579,7 +620,73 @@ class _OfflineKnowledgeTopic {
   });
 }
 
+const Set<String> _queryStopwords = {
+  'a',
+  'an',
+  'and',
+  'are',
+  'best',
+  'for',
+  'from',
+  'how',
+  'i',
+  'identify',
+  'if',
+  'in',
+  'is',
+  'it',
+  'me',
+  'my',
+  'of',
+  'on',
+  'or',
+  'should',
+  'tell',
+  'the',
+  'this',
+  'to',
+  'what',
+  'when',
+  'why',
+};
+
 const List<_OfflineKnowledgeTopic> _knowledgeTopics = [
+  _OfflineKnowledgeTopic(
+    title: 'Herbs and medicinal plants',
+    keywords: ['herb', 'basil', 'mint', 'oregano', 'thyme', 'rosemary', 'sage'],
+    tips: [
+      'Most culinary herbs taste best when harvested before full flowering, while growth is still tender.',
+      'Mediterranean herbs want fast drainage and lighter feeding than thirsty leafy vegetables.',
+      'Pinching shoot tips encourages branching and keeps many herbs compact.',
+    ],
+  ),
+  _OfflineKnowledgeTopic(
+    title: 'Houseplants and indoor growing',
+    keywords: ['houseplant', 'indoor', 'pothos', 'philodendron', 'monstera', 'snake plant'],
+    tips: [
+      'Adjust watering to light level and season, since indoor plants use less water in lower light and winter growth slows.',
+      'Check for mites, scale, and fungus gnats early because indoor outbreaks spread quietly.',
+      'Repot only when roots truly fill the container or watering becomes difficult to manage.',
+    ],
+  ),
+  _OfflineKnowledgeTopic(
+    title: 'Leafy greens and cool-season crops',
+    keywords: ['lettuce', 'spinach', 'greens', 'kale', 'chard', 'brassica'],
+    tips: [
+      'Cool-season crops stay sweeter and less bitter when temperatures are moderated with timing, mulch, or shade cloth.',
+      'Sow small batches repeatedly for a steadier harvest rather than planting everything at once.',
+      'Watch brassicas early for caterpillars and flea beetles because small plants can be damaged quickly.',
+    ],
+  ),
+  _OfflineKnowledgeTopic(
+    title: 'Root crops and bulbs',
+    keywords: ['carrot', 'beet', 'radish', 'turnip', 'onion', 'garlic', 'bulb'],
+    tips: [
+      'Root crops develop straighter roots in loose, stone-free soil with even moisture.',
+      'Avoid excess nitrogen before harvest on many root crops because it can favor leaves over roots.',
+      'Thin crowded seedlings early so bulbs and roots can size up correctly.',
+    ],
+  ),
   _OfflineKnowledgeTopic(
     title: 'Watering and irrigation',
     keywords: ['water', 'watering', 'irrigat', 'dry', 'drought'],
@@ -654,7 +761,7 @@ const List<_OfflineKnowledgeTopic> _knowledgeTopics = [
   ),
   _OfflineKnowledgeTopic(
     title: 'Fruit trees and berries',
-    keywords: ['fruit', 'berry', 'tree', 'orchard'],
+    keywords: ['fruit', 'berry', 'tree', 'orchard', 'citrus', 'apple', 'peach'],
     tips: [
       'Maintain airflow and open structure to improve fruit quality and disease resistance.',
       'Thin overloaded branches so the plant can size fruit properly and avoid breakage.',

@@ -281,8 +281,13 @@ class _PlantIdScreenState extends State<PlantIdScreen> {
                   controller: _notesCtrl,
                   maxLines: 3,
                   decoration: const InputDecoration(
-                    hintText: 'Leaf shape, smell, texture, etc.',
+                    hintText: 'Leaf shape, smell, texture, or a common-name guess',
                   ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Tip: adding a likely common name or a few standout traits improves both offline matching and live plant search.',
+                  style: Theme.of(context).textTheme.bodySmall,
                 ),
               ],
             ),
@@ -382,7 +387,7 @@ class _PlantIdScreenState extends State<PlantIdScreen> {
                   trailing: const Icon(Icons.chevron_right),
                   onTap: () {
                     if (match.localPlantId != null) {
-                      context.push('/encyclopedia/plant/${match.localPlantId}');
+                      context.push('/plants/${match.localPlantId}');
                       return;
                     }
 
@@ -423,7 +428,7 @@ class _PlantIdScreenState extends State<PlantIdScreen> {
                 children: [
                   Icon(Icons.search_off, size: 48, color: Colors.grey),
                   SizedBox(height: 12),
-                  Text('No matches found. Try another photo or add more descriptors.',
+                  Text('No strong matches found. Try another photo, add standout traits, or include a likely common name.',
                       textAlign: TextAlign.center),
                 ],
               ),

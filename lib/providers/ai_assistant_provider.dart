@@ -133,6 +133,10 @@ class AiAssistantProvider extends ChangeNotifier {
 
 	try {
       _learnedNotes = await _memoryService.learnFromMessage(message);
+      final relevantVerifiedInsights = _memoryService.relevantVerifiedInsights(
+        question: message,
+        verifiedAnswers: _verifiedAnswers,
+      );
 
 	  String response;
       var responseSource = 'offline';
@@ -149,6 +153,7 @@ class AiAssistantProvider extends ChangeNotifier {
 		  userMessage: message,
 		  soilContext: soilContext,
           learnedContext: _learnedNotes,
+          verifiedInsights: relevantVerifiedInsights,
 		);
 
 		if (_shouldFallbackToOffline(response)) {

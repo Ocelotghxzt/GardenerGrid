@@ -74,4 +74,64 @@ class PlantEntry {
 		propagation: j['propagation'] as String,
 		imageAsset: j['imageAsset'] as String?,
 	  );
+
+  List<String> get commonNameAliases {
+    final aliases = <String>{name.trim()};
+
+    for (final source in [name, scientificName]) {
+      final trimmed = source.trim();
+      if (trimmed.isEmpty) continue;
+
+      aliases.add(trimmed);
+
+      final noParens = trimmed.replaceAll(RegExp(r'\([^)]*\)'), ' ').replaceAll(
+            RegExp(r'\s+'),
+            ' ',
+          ).trim();
+      if (noParens.isNotEmpty) {
+        aliases.add(noParens);
+      }
+
+      final parenMatches = RegExp(r'\(([^)]*)\)').allMatches(trimmed);
+      for (final match in parenMatches) {
+        final value = (match.group(1) ?? '').trim();
+        if (value.isNotEmpty) {
+          aliases.add(value);
+        }
+      }
+
+      for (final part in trimmed.split(RegExp(r'[,/]'))) {
+        final value = part.trim();
+        if (value.isNotEmpty) {
+          aliases.add(value);
+        }
+      }
+    }
+
+    final normalized = aliases
+        .map((item) => item.replaceAll(RegExp(r'\s+'), ' ').trim())
+        .where((item) => item.isNotEmpty)
+        .toList(growable: false);
+    return normalized;
+  }
+
+  List<String> get searchTerms => [
+        name,
+        scientificName,
+        family,
+        category,
+        ...commonNameAliases,
+        ...tags,
+        ...companionPlants,
+        ...pestRepellent,
+        description,
+        soilPreference,
+        sunlight,
+        water,
+        bloomSeason,
+        culinaryUses,
+        medicinalUses,
+        gardeningTips,
+        propagation,
+      ];
 }

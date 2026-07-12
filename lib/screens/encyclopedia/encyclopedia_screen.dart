@@ -442,7 +442,7 @@ class PlantDetailScreen extends StatelessWidget {
 		body: const EmptyState(
 		  icon: Icons.local_florist_outlined,
 		  title: 'Plant not found',
-		  subtitle: 'This encyclopedia entry is missing or still loading.',
+		  subtitle: 'This plant profile is missing or still loading.',
 		),
 	  );
 	}

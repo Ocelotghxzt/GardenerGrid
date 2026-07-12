@@ -41,4 +41,25 @@ void main() {
       contains('Keep soil moisture even so calcium uptake stays steady.'),
     );
   });
+
+  test('finds relevant verified insights for a related follow-up question', () {
+    final service = AiMemoryService();
+
+    final insights = service.relevantVerifiedInsights(
+      question: 'What helps stop blossom end rot on tomato plants?',
+      verifiedAnswers: const [
+        VerifiedAiAnswer(
+          question: 'How do I prevent blossom end rot in tomatoes?',
+          insights: [
+            'Keep soil moisture even so calcium uptake stays steady.',
+            'Mulch the root zone to reduce moisture swings.',
+          ],
+          savedAt: DateTime(2026),
+        ),
+      ],
+    );
+
+    expect(insights, isNotEmpty);
+    expect(insights.first, contains('calcium uptake'));
+  });
 }

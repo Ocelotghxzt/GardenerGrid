@@ -11,7 +11,7 @@ import '../screens/crops/crop_detail_screen.dart';
 import '../screens/maintenance/maintenance_screen.dart';
 import '../screens/market/market_dashboard_screen.dart';
 import '../screens/bluetooth/bluetooth_screen.dart';
-import '../screens/encyclopedia/encyclopedia_screen.dart';
+import '../screens/encyclopedia/encyclopedia_screen.dart' show PlantDetailScreen;
 import '../screens/ai/ai_assistant_screen.dart';
 import '../screens/almanac/almanac_screen.dart';
 import '../screens/plant_id/plant_id_screen.dart';
@@ -64,9 +64,7 @@ GoRouter makeRouter(AuthProvider auth) => GoRouter(
             path: '/bluetooth/mesh-settings',
             builder: (_, __) => const MeshSettingsScreen()),
         GoRoute(
-            path: '/encyclopedia', builder: (_, __) => const EncyclopediaScreen()),
-        GoRoute(
-          path: '/encyclopedia/plant/:id',
+          path: '/plants/:id',
           builder: (_, state) =>
               PlantDetailScreen(plantId: state.pathParameters['id']!),
         ),

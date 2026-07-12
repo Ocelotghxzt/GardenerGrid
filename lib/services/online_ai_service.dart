@@ -20,6 +20,7 @@ class OnlineAiService {
     required String userMessage,
     SoilSample? soilContext,
     List<String> learnedContext = const [],
+    List<String> verifiedInsights = const [],
   }) async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) {
@@ -39,6 +40,7 @@ class OnlineAiService {
         'userMessage': userMessage,
         'soilContext': _serializeSoilContext(soilContext),
         'learnedContext': learnedContext,
+        'verifiedInsights': verifiedInsights,
       });
 
       final data = _asMap(result.data);

@@ -30,6 +30,31 @@ void main() {
     propagation: 'Seed or cuttings',
   );
 
+  final calendula = PlantEntry(
+    id: 'calendula',
+    name: 'Calendula (Pot Marigold)',
+    scientificName: 'Calendula officinalis',
+    family: 'Asteraceae',
+    category: 'Flower',
+    tags: const ['pollinator', 'edible', 'medicinal'],
+    description: 'A bright annual flower often grown for pollinators and petals.',
+    soilPreference: 'Average, well-drained soil',
+    sunlight: 'Full sun',
+    water: 'Moderate water',
+    phMin: 6,
+    phMax: 7.5,
+    hardinessZone: '2-11',
+    heightCm: 45,
+    spreadCm: 30,
+    bloomSeason: 'Spring to fall',
+    companionPlants: const ['Tomatoes'],
+    pestRepellent: const ['aphids'],
+    culinaryUses: 'Petals for salads and tea',
+    medicinalUses: 'Traditional skin-soothing herb',
+    gardeningTips: 'Deadhead often to keep flowers coming.',
+    propagation: 'Direct sow or start indoors',
+  );
+
   final foraging = ForagingEntry(
     id: 'blackberry',
     name: 'Blackberry',
@@ -57,7 +82,10 @@ void main() {
   );
 
   test('answers using common plant names and learned context', () {
-    final service = OfflineAiService(plants: [basil], foraging: [foraging]);
+    final service = OfflineAiService(
+      plants: [basil, calendula],
+      foraging: [foraging],
+    );
 
     final answer = service.answer(
       'How do I care for basil?',
@@ -69,8 +97,24 @@ void main() {
     expect(answer, contains('Remembered growing context'));
   });
 
+  test('matches parenthetical common-name aliases', () {
+    final service = OfflineAiService(
+      plants: [basil, calendula],
+      foraging: [foraging],
+    );
+
+    final answer = service.answer('How do I grow pot marigold in containers?');
+
+    expect(answer, contains('Calendula'));
+    expect(answer, contains('Also called'));
+    expect(answer, contains('Pot Marigold'));
+  });
+
   test('reuses verified cloud learnings during offline fallback', () {
-    final service = OfflineAiService(plants: [basil], foraging: [foraging]);
+    final service = OfflineAiService(
+      plants: [basil, calendula],
+      foraging: [foraging],
+    );
 
     final answer = service.answer(
       'How do I prevent blossom end rot in tomatoes?',

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 import '../models/plant_entry.dart';
+import 'online_plant_search_service.dart';
 
 class PlantIdMatch {
   final String id;
@@ -56,6 +57,8 @@ class PlantDescriptors {
 
 class PlantIdService {
   static final _picker = ImagePicker();
+  final OnlinePlantSearchService _onlineSearchService =
+      OnlinePlantSearchService();
 
   Future<XFile?> pickImageFromGallery() async {
     return _picker.pickImage(source: ImageSource.gallery);
@@ -73,20 +76,36 @@ class PlantIdService {
     String? countryCode,
   }) async {
     final localRanked = identifyPlants(plants, descriptors);
+    final descriptorMatches = await _searchFromDescriptors(
+      plants: plants,
+      descriptors: descriptors,
+      countryCode: countryCode,
+    );
 
     if (image == null) {
-      return localRanked;
+      if (descriptorMatches.isEmpty) {
+        return localRanked;
+      }
+      return _mergeAndRank(descriptorMatches, localRanked);
     }
 
-    final remoteA = await _identifyWithInaturalistCv(image, plants, countryCode: countryCode);
-    final remoteB = await _identifyWithInaturalistLegacy(image, plants, countryCode: countryCode);
+    final remoteResults = await Future.wait([
+      _identifyWithInaturalistCv(image, plants, countryCode: countryCode),
+      _identifyWithInaturalistLegacy(image, plants, countryCode: countryCode),
+    ]);
+    final remoteA = remoteResults[0];
+    final remoteB = remoteResults[1];
 
     final remoteEnsemble = _ensembleRemote(remoteA, remoteB);
-    if (remoteEnsemble.isEmpty) {
+    final remoteCombined = _combineRemoteMatches(
+      remoteEnsemble,
+      descriptorMatches,
+    );
+    if (remoteCombined.isEmpty) {
       return localRanked;
     }
 
-    return _mergeAndRank(remoteEnsemble, localRanked);
+    return _mergeAndRank(remoteCombined, localRanked);
   }
 
   // Provider A: iNaturalist computer-vision scoring endpoint.
@@ -331,6 +350,7 @@ class PlantIdService {
     for (final plant in plants) {
       final pSci = _norm(plant.scientificName);
       final pName = _norm(plant.name);
+      final aliases = plant.commonNameAliases.map(_norm).toList(growable: false);
 
       double score = 0;
       if (sci.isNotEmpty) {
@@ -345,6 +365,11 @@ class PlantIdService {
 
       if (common.isNotEmpty) {
         score = score > _nameSimilarity(common, pName) ? score : _nameSimilarity(common, pName);
+        for (final alias in aliases) {
+          score = score > _nameSimilarity(common, alias)
+              ? score
+              : _nameSimilarity(common, alias);
+        }
       }
 
       if (score > bestScore) {
@@ -405,6 +430,22 @@ class PlantIdService {
     }
 
     final merged = byId.values.toList()..sort((a, b) => b.confidence.compareTo(a.confidence));
+    return merged.take(12).toList();
+  }
+
+  List<PlantIdMatch> _combineRemoteMatches(
+    List<PlantIdMatch> primary,
+    List<PlantIdMatch> secondary,
+  ) {
+    final byId = <String, PlantIdMatch>{};
+    for (final match in primary) {
+      byId[match.id] = match;
+    }
+    for (final match in secondary) {
+      byId.putIfAbsent(match.id, () => match);
+    }
+    final merged = byId.values.toList()
+      ..sort((a, b) => b.confidence.compareTo(a.confidence));
     return merged.take(12).toList();
   }
 
@@ -533,6 +574,97 @@ class PlantIdService {
 
     matches.sort((a, b) => b.confidence.compareTo(a.confidence));
     return matches.take(12).toList();
+  }
+
+  Future<List<PlantIdMatch>> _searchFromDescriptors({
+    required List<PlantEntry> plants,
+    required PlantDescriptors descriptors,
+    String? countryCode,
+  }) async {
+    final query = _descriptorSearchQuery(descriptors);
+    if (query.isEmpty) return const [];
+
+    try {
+      final results = await _onlineSearchService.search(
+        query,
+        countryCode: countryCode,
+      );
+      return results
+          .where((result) => result.confidence >= 0.58)
+          .map((result) {
+            final match = _matchCandidateToLocal(
+              plants: plants,
+              scientificName: result.scientificName,
+              commonName: result.name,
+            );
+
+            return PlantIdMatch(
+              id: match?.id ?? result.id,
+              name: match?.name ?? result.name,
+              scientificName: match?.scientificName ?? result.scientificName,
+              family: match?.family ?? result.family,
+              confidence: (match != null
+                      ? result.confidence + 0.08
+                      : result.confidence)
+                  .clamp(0.0, 0.92),
+              reason: match != null
+                  ? 'Matched your descriptors and online plant sources'
+                  : 'Matched your descriptors in online plant sources',
+              detailSnippet: result.snippet,
+              localPlantId: match?.id,
+              sources: ['online:text_search:${result.source.toLowerCase()}'],
+            );
+          })
+          .take(8)
+          .toList(growable: false);
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  String _descriptorSearchQuery(PlantDescriptors descriptors) {
+    final parts = <String>[];
+
+    if (descriptors.notes != null && descriptors.notes!.trim().isNotEmpty) {
+      parts.add(descriptors.notes!.trim());
+    }
+
+    if (descriptors.plantHabit != null) {
+      parts.add(
+        switch (descriptors.plantHabit!) {
+          PlantHabit.herb => 'herb plant',
+          PlantHabit.shrub => 'shrub plant',
+          PlantHabit.tree => 'tree plant',
+          PlantHabit.vine => 'vine plant',
+          PlantHabit.grass => 'grass plant',
+          PlantHabit.succulent => 'succulent plant',
+        },
+      );
+    }
+
+    if (descriptors.flowerColor != null &&
+        descriptors.flowerColor != FlowerColor.none) {
+      parts.add(descriptors.flowerColor!.name);
+      parts.add('flower');
+    }
+
+    if (descriptors.habitat != null) {
+      parts.add(
+        switch (descriptors.habitat!) {
+          HabitatType.garden => 'garden',
+          HabitatType.forest => 'forest',
+          HabitatType.meadow => 'meadow',
+          HabitatType.wetland => 'wetland',
+          HabitatType.desert => 'arid',
+          HabitatType.urban => 'urban',
+        },
+      );
+    }
+
+    return parts
+        .join(' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
   }
 
   String getConfidenceLabel(double confidence) {

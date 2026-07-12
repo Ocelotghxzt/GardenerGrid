@@ -3,6 +3,8 @@ const {onCall, HttpsError} = require("firebase-functions/v2/https");
 
 admin.initializeApp();
 
+// Override these defaults with AI_ENDPOINT and AI_MODEL environment variables
+// when GardenerGrid needs to target a different upstream provider or model.
 const DEFAULT_ENDPOINT = "https://api.deepseek.com/chat/completions";
 const DEFAULT_MODEL = "deepseek-chat";
 const MAX_HISTORY_MESSAGES = 16;

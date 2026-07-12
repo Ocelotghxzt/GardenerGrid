@@ -68,9 +68,9 @@ class EncyclopediaProvider extends ChangeNotifier {
 		await _localStorage.cacheForaging(_foragingEntries);
 	  }
 	} on FlutterError {
-	  _error = 'Offline plant knowledge files are missing or unavailable.';
+	  _error = 'Could not load offline plant knowledge. Check the bundled plant data files.';
     } catch (e) {
-	  _error = 'Could not load offline plant knowledge.';
+	  _error = 'Could not load offline plant knowledge. Check the bundled plant data files.';
 	}
 
 	_loading = false;

@@ -112,6 +112,7 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
 					  value: ai.preferOnline,
 					  onChanged: ai.setOnlineMode,
 					  activeThumbColor: Colors.white,
+                      activeTrackColor: Colors.white.withValues(alpha: 0.35),
 					),
 				  ],
 				),

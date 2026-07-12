@@ -80,7 +80,7 @@ class AiMemoryService {
           lower.contains(' i ') ||
           lower.contains(' my ');
       final hasGardeningContext = RegExp(
-        r'\b(grow|growing|garden|soil|zone|climate|yard|orchard|bed|container|greenhouse|watering|compost|mulch|prune|fertiliz|tomato|pepper|pepper|lettuce|fruit|vegetable|herb|flower|plant)\b',
+        r'\b(grow|growing|garden|soil|zone|climate|yard|orchard|bed|container|greenhouse|watering|compost|mulch|prune|fertiliz|tomato|pepper|lettuce|fruit|vegetable|herb|flower|plant)\b',
         caseSensitive: false,
       ).hasMatch(clause);
 

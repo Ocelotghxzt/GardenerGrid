@@ -103,7 +103,7 @@ class _AddCropScreenState extends State<AddCropScreen> {
               ),
               const SizedBox(height: 14),
               DropdownButtonFormField<String>(
-                value: _category,
+                initialValue: _category,
                 decoration: const InputDecoration(labelText: 'Category'),
                 items: _categories
                     .map((c) => DropdownMenuItem(value: c, child: Text(c)))
@@ -129,7 +129,7 @@ class _AddCropScreenState extends State<AddCropScreen> {
                 ],
               ),
               DropdownButtonFormField<String>(
-                value: _watering,
+                initialValue: _watering,
                 decoration: const InputDecoration(labelText: 'Watering Frequency'),
                 items: _wateringOptions
                     .map((w) => DropdownMenuItem(value: w, child: Text(w)))

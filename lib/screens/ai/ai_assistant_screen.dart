@@ -111,7 +111,7 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
 					Switch.adaptive(
 					  value: ai.preferOnline,
 					  onChanged: ai.setOnlineMode,
-					  activeColor: Colors.white,
+					  activeThumbColor: Colors.white,
 					),
 				  ],
 				),

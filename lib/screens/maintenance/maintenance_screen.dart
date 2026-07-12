@@ -260,7 +260,7 @@ class _AddTaskSheetState extends State<_AddTaskSheet> {
             ),
             const SizedBox(height: 14),
             DropdownButtonFormField<TaskType>(
-              value: _type,
+              initialValue: _type,
               decoration: const InputDecoration(labelText: 'Task Type'),
               items: TaskType.values
                   .map((t) => DropdownMenuItem(

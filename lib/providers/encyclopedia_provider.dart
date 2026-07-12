@@ -50,7 +50,7 @@ class EncyclopediaProvider extends ChangeNotifier {
 		  await _localStorage.clearEncyclopediaCache();
 		}
 
-		final plantsJson = await rootBundle.loadString('assets/data/plants.json');
+        final plantsJson = await rootBundle.loadString('assets/data/plants.json');
 		final foragingJson =
 			await rootBundle.loadString('assets/data/foraging.json');
 
@@ -67,7 +67,9 @@ class EncyclopediaProvider extends ChangeNotifier {
 		await _localStorage.cachePlants(_plants);
 		await _localStorage.cacheForaging(_foragingEntries);
 	  }
-	} catch (e) {
+	} on FlutterError {
+	  _error = 'Offline plant knowledge files are missing or unavailable.';
+    } catch (e) {
 	  _error = 'Could not load offline plant knowledge.';
 	}
 
